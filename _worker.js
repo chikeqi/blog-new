@@ -181,8 +181,8 @@ async function handleAdmin(request, kv) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理后台</title>
-    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <link href="https://unpkg.com/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+    <script src="https://unpkg.com/quill@1.3.7/dist/quill.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:system-ui;background:#f0f2f5;padding:20px}
@@ -315,7 +315,6 @@ async function handleAdmin(request, kv) {
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 let allPosts = ${JSON.stringify(posts)};
 let allSites = ${JSON.stringify(sites)};
