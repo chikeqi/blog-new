@@ -156,7 +156,7 @@ async function handleHome(request, kv) {
     
     let blogListHtml = blogPosts.map(post => {
         const views = viewsMap.get(post.id) || 0;
-        return `<div class="blog-card" onclick="location.href='/post/${post.id}'"><div style="display:flex;justify-content:space-between;gap:16px"><div style="flex:1"><h3 style="font-size:18px;margin-bottom:8px;color:#2d3748">${escapeHtml(post.title)}</h3><div style="display:flex;gap:16px;margin:8px 0;font-size:12px;color:#a0aec0"><span>📅 ${new Date(post.createdAt).toLocaleDateString()}</span><span>🏷️ ${escapeHtml(post.category || '未分类')}</span><span>👁️ ${views}阅读</span>${post.tags && post.tags.length ? `<span>🏷️ ${post.tags.map(t => '#' + escapeHtml(t)).join(' ')}</span>` : ''}</div><p style="color:#718096;line-height:1.5">${escapeHtml(post.excerpt || (post.content || '').substring(0, 100).replace(/<[^>]*>/g, ''))}...</p></div>${post.coverImage ? `<img src="${escapeHtml(post.coverImage)}" style="width:100px;height:80px;object-fit:cover;border-radius:8px">` : ''}</div></div>`;
+        return `<div class="blog-card" onclick="location.href='/post/${post.id}'"><div style="display:flex;justify-content:space-between;gap:16px"><div style="flex:1"><h3 style="font-size:18px;margin-bottom:8px;color:#2d3748">${escapeHtml(post.title)}</h3><div style="display:flex;gap:16px;margin:8px 0;font-size:12px;color:#a0aec0"><span>📅 ${new Date(post.createdAt).toLocaleDateString()}</span><span>🏷️ ${escapeHtml(post.category || '未分类')}</span><span>👁️ ${views}阅读</span>${post.tags && post.tags.length ? `<span>🏷️ ${post.tags.map(t => '#' + escapeHtml(t)).join(' ')}</span>` : ''}</div><p style="color:#718096;line-height:1.5">${escapeHtml((post.excerpt || (post.content || '')).replace(/<[^>]*>/g, '').substring(0, 100))}...</p>, ''))}...</p></div>${post.coverImage ? `<img src="${escapeHtml(post.coverImage)}" style="width:100px;height:80px;object-fit:cover;border-radius:8px">` : ''}</div></div>`;
     }).join('');
     if (!blogListHtml) blogListHtml = '<div style="text-align:center;padding:60px">暂无文章</div>';
     
@@ -340,19 +340,43 @@ async function handleApi(request, kv) {
         try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
         return new Response(JSON.stringify({ code: 200, data: posts }), { headers: { 'Content-Type': 'application/json' } });
     }
-    if (request.method === 'POST' && path === '/api/blog') {
-        const body = await request.json();
-        let posts = [];
-        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
-        const baseSlug = body.title.replace(/[^\w\u4e00-\u9fa5]+/g, '-').toLowerCase().replace(/^-+|-+$/g, '') || 'post';
-        let slug = baseSlug;
-        let suffix = 1;
-        while (posts.some(p => p.slug === slug)) { slug = baseSlug + '-' + (suffix++); }
-        const newPost = { id: Date.now(), slug: slug, title: body.title, content: body.content, category: body.category || '未分类', coverImage: body.coverImage || '', excerpt: body.excerpt || '', status: body.status || 'published', tags: body.tags || [], pinned: body.pinned || false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-        posts.push(newPost);
-        await kv.put('blog_posts', JSON.stringify(posts));
-        return new Response(JSON.stringify({ code: 201 }), { headers: { 'Content-Type': 'application/json' } });
-    }
+if (request.method === 'POST' && path === '/api/blog') {
+    const body = await request.json();
+    let posts = [];
+    try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
+    
+    // 生成 slug
+    const baseSlug = (body.title || 'post').replace(/[^\w\u4e00-\u9fa5]+/g, '-').toLowerCase().replace(/^-+|-+$/g, '') || 'post';
+    let slug = baseSlug;
+    let suffix = 1;
+    while (posts.some(p => p.slug === slug)) { slug = baseSlug + '-' + (suffix++); }
+    
+    // 安全地获取纯文本内容（过滤所有 HTML 标签）
+    const rawContent = body.content || '';
+    const plainContent = rawContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    const excerpt = (body.excerpt && body.excerpt.trim()) ? body.excerpt.trim() : plainContent.substring(0, 150);
+    
+    const newPost = { 
+        id: Date.now(), 
+        slug: slug, 
+        title: body.title || '无标题', 
+        content: rawContent, 
+        category: body.category || '未分类', 
+        coverImage: body.coverImage || '', 
+        excerpt: excerpt,
+        status: body.status || 'published', 
+        tags: Array.isArray(body.tags) ? body.tags : [], 
+        pinned: body.pinned === true || body.pinned === 'true', 
+        createdAt: new Date().toISOString(), 
+        updatedAt: new Date().toISOString() 
+    };
+    posts.push(newPost);
+    await kv.put('blog_posts', JSON.stringify(posts));
+    return new Response(JSON.stringify({ code: 201, data: newPost }), { 
+        status: 201, 
+        headers: { 'Content-Type': 'application/json' } 
+    });
+}
     if (request.method === 'PUT' && path.startsWith('/api/blog/')) {
         const id = parseInt(path.split('/')[3]);
         const body = await request.json();
