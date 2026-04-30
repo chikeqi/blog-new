@@ -1,4 +1,4 @@
-// 旭儿导航 - 书签管理 + 文章管理 #1
+// 旭儿导航 - 书签管理 + 文章管理 + 文章详情页 #2
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -10,6 +10,9 @@ export default {
         }
         if (path === '/logout') {
             return handleLogout(request, kv);
+        }
+        if (path.startsWith('/post/')) {
+            return handlePost(request, kv);
         }
         if (path.startsWith('/api/')) {
             return handleApi(request, kv);
@@ -322,7 +325,7 @@ async function handleAdmin(request, kv) {
                 <tr>
                     <td><strong>\${escape(s.name)}</strong></td>
                     <td><a href="\${s.url}" target="_blank">\${escape(s.url)}</a></td>
-                    <td>\${escape(s.catelog)}</td>
+                    <td>\${escape(s.catelog)}</span></td>
                     <td><button class="delete-btn" onclick="deleteBookmark(\${s.id})">删除</button></td>
                 </tr>
             \`).join('');
@@ -434,6 +437,74 @@ async function handleLogout(request, kv) {
         status: 302,
         headers: { 'Location': '/', 'Set-Cookie': 'admin_token=; Path=/; HttpOnly; Max-Age=0' }
     });
+}
+
+// ==================== 文章详情页 #2 ====================
+async function handlePost(request, kv) {
+    const url = new URL(request.url);
+    const id = parseInt(url.pathname.split('/')[2]);
+    
+    if (isNaN(id)) {
+        return new Response('文章不存在', { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+    
+    let posts = [];
+    try {
+        const data = await kv.get('blog_posts');
+        if (data) posts = JSON.parse(data);
+    } catch(e) { }
+    
+    const post = posts.find(p => p.id === id);
+    
+    if (!post) {
+        return new Response('文章不存在', { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+    
+    // 增加阅读量
+    let views = 0;
+    try {
+        const viewsData = await kv.get(`views:${id}`);
+        if (viewsData) views = parseInt(viewsData);
+        views++;
+        await kv.put(`views:${id}`, views.toString());
+    } catch(e) { }
+    
+    const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>${escapeHtml(post.title)} - 旭儿导航</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f7fa; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .article { background: white; border-radius: 20px; padding: 40px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        h1 { font-size: 28px; margin-bottom: 16px; color: #333; }
+        .meta { color: #888; font-size: 14px; margin-bottom: 30px; padding-bottom: 16px; border-bottom: 1px solid #eee; }
+        .content { line-height: 1.8; font-size: 16px; color: #444; }
+        .content p { margin-bottom: 16px; }
+        .back-btn { display: inline-block; margin-top: 30px; background: #667eea; color: white; padding: 10px 24px; border-radius: 30px; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="article">
+            <h1>${escapeHtml(post.title)}</h1>
+            <div class="meta">
+                分类：${escapeHtml(post.category || '未分类')} | 
+                发布时间：${new Date(post.createdAt).toLocaleDateString()} |
+                阅读：${views}次
+            </div>
+            <div class="content">
+                ${post.content.replace(/\n/g, '<br>')}
+            </div>
+            <a href="/" class="back-btn">← 返回首页</a>
+        </div>
+    </div>
+</body>
+</html>`;
+    
+    return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
 function escapeHtml(str) {
