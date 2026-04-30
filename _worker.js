@@ -1,28 +1,23 @@
-// 旭儿导航 - 书签管理 + 文章管理
+// 旭儿导航 - 书签管理 + 文章管理 #1
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
         const path = url.pathname;
         const kv = env.NAV_KV;
 
-        // 后台管理
         if (path === '/admin') {
             return handleAdmin(request, kv);
         }
-        // 退出登录
         if (path === '/logout') {
             return handleLogout(request, kv);
         }
-        // API
         if (path.startsWith('/api/')) {
             return handleApi(request, kv);
         }
-        // 首页
         return handleHome(request, kv);
     }
 };
 
-// ==================== 首页 ====================
 async function handleHome(request, kv) {
     let sites = [];
     let posts = [];
@@ -33,7 +28,6 @@ async function handleHome(request, kv) {
         if (postsData) posts = JSON.parse(postsData);
     } catch(e) { }
 
-    // 只显示已发布的文章
     const publishedPosts = posts.filter(p => p.status === 'published').slice(0, 5);
 
     const html = `<!DOCTYPE html>
@@ -105,7 +99,6 @@ async function handleHome(request, kv) {
     return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-// ==================== 后台管理 ====================
 async function handleAdmin(request, kv) {
     const cookie = request.headers.get('Cookie') || '';
     const match = cookie.match(/admin_token=([^;]+)/);
@@ -116,7 +109,6 @@ async function handleAdmin(request, kv) {
         isLoggedIn = session !== null;
     }
 
-    // 处理登录 POST
     if (request.method === 'POST') {
         const form = await request.formData();
         const password = form.get('password');
@@ -139,7 +131,6 @@ async function handleAdmin(request, kv) {
         });
     }
 
-    // 未登录：显示登录页
     if (!isLoggedIn) {
         const loginHtml = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -166,7 +157,6 @@ async function handleAdmin(request, kv) {
         return new Response(loginHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
-    // 已登录：管理界面
     let sites = [];
     let posts = [];
     try {
@@ -207,7 +197,6 @@ async function handleAdmin(request, kv) {
             <a href="/logout" style="color: #e53e3e;">退出登录</a>
         </div>
         
-        <!-- 文章管理 -->
         <div class="card">
             <h3>📝 发布文章</h3>
             <div class="form-group">
@@ -231,13 +220,12 @@ async function handleAdmin(request, kv) {
             <div class="form-group">
                 <input type="text" id="searchPost" placeholder="搜索文章..." onkeyup="searchPosts()">
             </div>
-            <table id="postsTable">
+            <table>
                 <thead><tr><th>标题</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead>
                 <tbody id="postList"></tbody>
             </table>
         </div>
         
-        <!-- 书签管理 -->
         <div class="card">
             <h3>➕ 添加书签</h3>
             <div class="form-group">
@@ -258,7 +246,6 @@ async function handleAdmin(request, kv) {
     </div>
     
     <script>
-        // 数据
         let allPosts = ${JSON.stringify(posts)};
         let allSites = ${JSON.stringify(sites)};
         
@@ -271,13 +258,10 @@ async function handleAdmin(request, kv) {
             });
         }
         
-        // ========== 文章管理 ==========
         function renderPosts(filter = '') {
             const tbody = document.getElementById('postList');
             let filtered = allPosts;
-            if (filter) {
-                filtered = allPosts.filter(p => p.title.toLowerCase().includes(filter.toLowerCase()));
-            }
+            if (filter) filtered = allPosts.filter(p => p.title.toLowerCase().includes(filter.toLowerCase()));
             tbody.innerHTML = filtered.map(p => \`
                 <tr>
                     <td><strong>\${escape(p.title)}</strong></td>
@@ -293,8 +277,7 @@ async function handleAdmin(request, kv) {
         }
         
         function searchPosts() {
-            const keyword = document.getElementById('searchPost').value;
-            renderPosts(keyword);
+            renderPosts(document.getElementById('searchPost').value);
         }
         
         async function addPost() {
@@ -302,20 +285,14 @@ async function handleAdmin(request, kv) {
             const content = document.getElementById('postContent').value.trim();
             const category = document.getElementById('postCategory').value.trim();
             const status = document.getElementById('postStatus').value;
-            if (!title || !content) {
-                alert('请填写标题和内容');
-                return;
-            }
+            if (!title || !content) { alert('请填写标题和内容'); return; }
             const res = await fetch('/api/blog', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title, content, category, status })
             });
-            if (res.ok) {
-                location.reload();
-            } else {
-                alert('发布失败');
-            }
+            if (res.ok) location.reload();
+            else alert('发布失败');
         }
         
         async function editPost(id) {
@@ -333,13 +310,12 @@ async function handleAdmin(request, kv) {
         }
         
         async function deletePost(id) {
-            if (!confirm('确定删除这篇文章？')) return;
+            if (!confirm('确定删除？')) return;
             const res = await fetch('/api/blog/' + id, { method: 'DELETE' });
             if (res.ok) location.reload();
             else alert('删除失败');
         }
         
-        // ========== 书签管理 ==========
         function renderBookmarks() {
             const tbody = document.getElementById('bookmarkList');
             tbody.innerHTML = allSites.map(s => \`
@@ -356,33 +332,23 @@ async function handleAdmin(request, kv) {
             const name = document.getElementById('siteName').value.trim();
             const url = document.getElementById('siteUrl').value.trim();
             const catelog = document.getElementById('siteCat').value.trim();
-            if (!name || !url || !catelog) {
-                alert('请填写完整');
-                return;
-            }
+            if (!name || !url || !catelog) { alert('请填写完整'); return; }
             const res = await fetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, url, catelog })
             });
-            if (res.ok) {
-                location.reload();
-            } else {
-                alert('添加失败');
-            }
+            if (res.ok) location.reload();
+            else alert('添加失败');
         }
         
         async function deleteBookmark(id) {
             if (!confirm('确定删除？')) return;
             const res = await fetch('/api/config/' + id, { method: 'DELETE' });
-            if (res.ok) {
-                location.reload();
-            } else {
-                alert('删除失败');
-            }
+            if (res.ok) location.reload();
+            else alert('删除失败');
         }
         
-        // 初始化
         renderPosts();
         renderBookmarks();
     </script>
@@ -391,74 +357,40 @@ async function handleAdmin(request, kv) {
     return new Response(adminHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-// ==================== API ====================
 async function handleApi(request, kv) {
     const url = new URL(request.url);
     const path = url.pathname;
     
-    // 获取书签
     if (request.method === 'GET' && path === '/api/config') {
         let sites = [];
-        try {
-            const data = await kv.get('sites');
-            if (data) sites = JSON.parse(data);
-        } catch(e) { }
-        return new Response(JSON.stringify({ code: 200, data: sites }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { }
+        return new Response(JSON.stringify({ code: 200, data: sites }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 添加书签
     if (request.method === 'POST' && path === '/api/config') {
         const body = await request.json();
         let sites = [];
-        try {
-            const data = await kv.get('sites');
-            if (data) sites = JSON.parse(data);
-        } catch(e) { }
+        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { }
         const newId = sites.length ? Math.max(...sites.map(s => s.id)) + 1 : 1;
         sites.push({ id: newId, name: body.name, url: body.url, catelog: body.catelog });
         await kv.put('sites', JSON.stringify(sites));
-        return new Response(JSON.stringify({ code: 201 }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        return new Response(JSON.stringify({ code: 201 }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 删除书签
     if (request.method === 'DELETE' && path.startsWith('/api/config/')) {
         const id = parseInt(path.split('/')[3]);
         let sites = [];
-        try {
-            const data = await kv.get('sites');
-            if (data) sites = JSON.parse(data);
-        } catch(e) { }
-        const newSites = sites.filter(s => s.id !== id);
-        await kv.put('sites', JSON.stringify(newSites));
-        return new Response(JSON.stringify({ code: 200 }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { }
+        await kv.put('sites', JSON.stringify(sites.filter(s => s.id !== id)));
+        return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 获取文章列表
     if (request.method === 'GET' && path === '/api/blog') {
         let posts = [];
-        try {
-            const data = await kv.get('blog_posts');
-            if (data) posts = JSON.parse(data);
-        } catch(e) { }
-        return new Response(JSON.stringify({ code: 200, data: posts }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
+        return new Response(JSON.stringify({ code: 200, data: posts }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 发布文章
     if (request.method === 'POST' && path === '/api/blog') {
         const body = await request.json();
         let posts = [];
-        try {
-            const data = await kv.get('blog_posts');
-            if (data) posts = JSON.parse(data);
-        } catch(e) { }
+        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
         const newPost = {
             id: Date.now(),
             title: body.title,
@@ -470,65 +402,40 @@ async function handleApi(request, kv) {
         };
         posts.push(newPost);
         await kv.put('blog_posts', JSON.stringify(posts));
-        return new Response(JSON.stringify({ code: 201 }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        return new Response(JSON.stringify({ code: 201 }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 更新文章
     if (request.method === 'PUT' && path.startsWith('/api/blog/')) {
         const id = parseInt(path.split('/')[3]);
         const body = await request.json();
         let posts = [];
-        try {
-            const data = await kv.get('blog_posts');
-            if (data) posts = JSON.parse(data);
-        } catch(e) { }
+        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
         const index = posts.findIndex(p => p.id === id);
         if (index !== -1) {
             posts[index] = { ...posts[index], ...body, updatedAt: new Date().toISOString() };
             await kv.put('blog_posts', JSON.stringify(posts));
         }
-        return new Response(JSON.stringify({ code: 200 }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 删除文章
     if (request.method === 'DELETE' && path.startsWith('/api/blog/')) {
         const id = parseInt(path.split('/')[3]);
         let posts = [];
-        try {
-            const data = await kv.get('blog_posts');
-            if (data) posts = JSON.parse(data);
-        } catch(e) { }
-        const newPosts = posts.filter(p => p.id !== id);
-        await kv.put('blog_posts', JSON.stringify(newPosts));
-        return new Response(JSON.stringify({ code: 200 }), {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
+        await kv.put('blog_posts', JSON.stringify(posts.filter(p => p.id !== id)));
+        return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
     return new Response(JSON.stringify({ code: 404 }), { status: 404 });
 }
 
-// ==================== 退出登录 ====================
 async function handleLogout(request, kv) {
     const cookie = request.headers.get('Cookie') || '';
     const match = cookie.match(/admin_token=([^;]+)/);
-    if (match) {
-        await kv.delete(`session:${match[1]}`);
-    }
+    if (match) await kv.delete(`session:${match[1]}`);
     return new Response(null, {
         status: 302,
-        headers: {
-            'Location': '/',
-            'Set-Cookie': 'admin_token=; Path=/; HttpOnly; Max-Age=0'
-        }
+        headers: { 'Location': '/', 'Set-Cookie': 'admin_token=; Path=/; HttpOnly; Max-Age=0' }
     });
 }
 
-// ==================== 辅助函数 ====================
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/[&<>]/g, m => {
