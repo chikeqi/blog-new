@@ -1,4 +1,4 @@
-// 旭儿导航 - #11 (修复：书签排序、文章置顶、摘要过滤、书签表单布局)
+// 旭儿导航 - 最终完整版
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -15,7 +15,6 @@ export default {
     }
 };
 
-// ==================== 图片上传 ====================
 async function handleUpload(request, kv) {
     const cookie = request.headers.get('Cookie') || '';
     const match = cookie.match(/admin_token=([^;]+)/);
@@ -57,13 +56,12 @@ async function handleImage(request, kv) {
     const data = await kv.get(`img:${filename}`);
     if (!data) return new Response('Not found', { status: 404 });
     const match = data.match(/^data:(image\/\w+);base64,(.+)$/);
-    if (!match) return new Response('Invalid', { status: 500 });
+    if (!match) return new Response('Invalid image data', { status: 500 });
     return new Response(Uint8Array.from(atob(match[2]), c => c.charCodeAt(0)), {
-        headers: { 'Content-Type': match[1], 'Cache-Control': 'public,max-age=86400' }
+        headers: { 'Content-Type': match[1], 'Cache-Control': 'public, max-age=86400' }
     });
 }
 
-// ==================== 首页 ====================
 async function handleHome(request, kv) {
     const url = new URL(request.url);
     const currentTab = url.searchParams.get('tab') || 'blog';
@@ -79,7 +77,6 @@ async function handleHome(request, kv) {
         if (postsData) posts = JSON.parse(postsData);
     } catch(e) { }
 
-    // 书签按 sort_order 排序
     sites.sort((a, b) => (a.sort_order || 9999) - (b.sort_order || 9999));
 
     const viewsMap = new Map();
@@ -119,7 +116,6 @@ async function handleHome(request, kv) {
     if (currentTag) {
         blogPosts = blogPosts.filter(p => p.tags && p.tags.includes(currentTag));
     }
-    // 置顶文章排前面，然后按时间倒序
     blogPosts.sort((a, b) => {
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
@@ -139,13 +135,11 @@ async function handleHome(request, kv) {
     
     let blogListHtml = blogPosts.map(post => {
         const views = viewsMap.get(post.id) || 0;
-        // 摘要过滤所有HTML标签
         const excerptText = (post.excerpt || (post.content || '')).replace(/<[^>]*>/g, '').substring(0, 100);
         return `<div class="blog-card" onclick="location.href='/post/${post.id}'"><div style="display:flex;justify-content:space-between;gap:16px"><div style="flex:1"><h3 style="font-size:18px;margin-bottom:8px;color:#2d3748">${escapeHtml(post.title)}${post.pinned ? ' <span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:12px;font-size:11px;">📌置顶</span>' : ''}</h3><div style="display:flex;gap:16px;margin:8px 0;font-size:12px;color:#a0aec0"><span>📅 ${new Date(post.createdAt).toLocaleDateString()}</span><span>🏷️ ${escapeHtml(post.category || '未分类')}</span><span>👁️ ${views}阅读</span>${post.tags && post.tags.length ? `<span>🏷️ ${post.tags.map(t => '#' + escapeHtml(t)).join(' ')}</span>` : ''}</div><p style="color:#718096;line-height:1.5">${escapeHtml(excerptText)}...</p></div>${post.coverImage ? `<img src="${escapeHtml(post.coverImage)}" style="width:100px;height:80px;object-fit:cover;border-radius:8px">` : ''}</div></div>`;
     }).join('');
     if (!blogListHtml) blogListHtml = '<div style="text-align:center;padding:60px">暂无文章</div>';
     
-    // 热门文章（按阅读量排序）
     const hotPosts = [...posts.filter(p => p.status === 'published')].sort((a, b) => (viewsMap.get(b.id) || 0) - (viewsMap.get(a.id) || 0)).slice(0, 5);
     const hotPostsHtml = hotPosts.map(p => `<a href="/post/${p.id}" style="display:block;padding:8px 12px;margin:4px 0;border-radius:8px;text-decoration:none;color:#4a5568;font-size:13px;background:#f8fafc">🔥 ${escapeHtml(p.title.length > 20 ? p.title.substring(0,20)+'...' : p.title)} <span style="float:right;color:#a0aec0">${viewsMap.get(p.id) || 0}阅</span></a>`).join('');
     
@@ -168,11 +162,11 @@ async function handleHome(request, kv) {
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><title>${escapeHtml(siteTitle)} · ${currentTab === 'blog' ? '博客' : '书签'}</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f7fafc;transition:background 0.3s}.sidebar{position:fixed;left:0;top:0;width:280px;height:100vh;background:white;box-shadow:2px 0 12px rgba(0,0,0,0.05);overflow-y:auto;z-index:100;transition:transform 0.3s}.sidebar-header{padding:20px;text-align:center;border-bottom:1px solid #e2e8f0}.sidebar-nav{padding:20px}.main{margin-left:280px;min-height:100vh}.header{position:relative;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:50px 40px 50px 60px;text-align:left;overflow:hidden}.header-bg-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}.header-content{position:relative;z-index:2}.header h1{font-size:42px;margin-bottom:12px}.content{max-width:1300px;margin:0 auto;padding:35px 30px}.content-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:25px;flex-wrap:wrap}.content-header h2{font-size:22px;color:#2d3748}.tab-buttons{display:flex;gap:10px}.tab-btn{padding:8px 20px;border:none;border-radius:30px;cursor:pointer}.tab-btn.active{background:#667eea;color:white}.tab-btn:not(.active){background:#e2e8f0}.sites-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:24px}.site-card,.blog-card{background:white;border-radius:12px;padding:16px;margin-bottom:20px;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s}.site-card:hover,.blog-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.1)}.search-box{margin-bottom:20px}.search-box input{width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:30px;font-size:14px}.tag-cloud{margin-bottom:20px;padding:15px;background:#f8fafc;border-radius:12px}.mobile-toggle{display:none;position:fixed;top:15px;left:15px;z-index:101;background:white;border:none;padding:10px;border-radius:10px;cursor:pointer}.dark-mode-toggle{position:fixed;bottom:20px;right:20px;background:#667eea;color:white;border:none;width:50px;height:50px;border-radius:50%;cursor:pointer;z-index:1000;font-size:20px}.go-top{position:fixed;bottom:20px;left:20px;background:#667eea;color:white;border:none;width:50px;height:50px;border-radius:50%;cursor:pointer;z-index:1000;display:none;font-size:20px}body.dark{background:#1a1a2e}body.dark .sidebar{background:#16213e;color:#eee}body.dark .site-card,body.dark .blog-card{background:#16213e;color:#eee}body.dark .content-header h2{color:#eee}body.dark .tag-cloud{background:#0f3460}body.dark .copy-btn{background:#2d3748!important;color:#a0aec0}@media (max-width:768px){.sidebar{transform:translateX(-100%)}.sidebar.open{transform:translateX(0)}.main{margin-left:0}.mobile-toggle{display:block}.header h1{font-size:28px}}</style></head>
-<body><button class="mobile-toggle" id="mobileToggle">☰</button><div class="sidebar" id="sidebar"><div class="sidebar-header">${logoHtml}</div><div class="sidebar-nav"><a href="/?tab=blog" style="display:block;padding:10px;background:#e2e8f0;border-radius:8px;text-align:center;margin-bottom:15px;text-decoration:none;color:#667eea;font-weight:600">📝 博客列表</a><div style="font-weight:600;margin:15px 0 10px">📁 书签分类</div>${catNavHtml || '<div>暂无分类</div>'}<div style="font-weight:600;margin:20px 0 10px">🔥 热门文章</div>${hotPostsHtml || '<div>暂无</div>'}<div style="margin-top:20px;padding-top:15px;border-top:1px solid #e2e8f0"><a href="/admin" style="display:block;padding:10px;background:#edf2f7;border-radius:8px;text-align:center;text-decoration:none">⚙️ 后台管理</a></div></div></div><div class="main"><div class="header">${headerBg ? `<img class="header-bg-img" src="${escapeHtml(headerBg)}">` : ''}<div class="header-content"><h1>${escapeHtml(siteTitle)}</h1><p>${escapeHtml(siteSubtitle)}</p><div>📅 ${new Date().toLocaleDateString('zh-CN')}</div></div></div><div class="content"><div class="content-header"><h2>${title}</h2><div class="tab-buttons"><button class="tab-btn ${currentTab === 'blog' ? 'active' : ''}" data-tab="blog">📝 博客</button><button class="tab-btn ${currentTab === 'bookmark' ? 'active' : ''}" data-tab="bookmark">🔖 书签</button></div></div><div id="blog-view" style="display:${currentTab === 'blog' ? 'block' : 'none'}"><div class="search-box"><form id="searchForm" onsubmit="event.preventDefault();let u=new URL(location.href);u.searchParams.set('q',this.q.value);u.searchParams.delete('page');location.href=u"><input type="text" name="q" placeholder="🔍 搜索文章..." value="${escapeHtml(searchQuery)}"></form></div>${tagCloudHtml ? `<div class="tag-cloud"><strong>🏷️ 热门标签：</strong> ${tagCloudHtml}</div>` : ''}${blogListHtml}</div><div id="bookmark-view" style="display:${currentTab === 'bookmark' ? 'block' : 'none'}"><div class="sites-grid">${cardsHtml}</div></div></div></div><button class="dark-mode-toggle" id="darkModeToggle">🌙</button><button class="go-top" id="goTop">↑</button><script>document.getElementById('mobileToggle').onclick=()=>document.getElementById('sidebar').classList.toggle('open');document.querySelectorAll('.copy-btn').forEach(btn=>btn.onclick=e=>{e.preventDefault();navigator.clipboard.writeText(btn.dataset.url);btn.textContent='✓';setTimeout(()=>btn.textContent='复制',1000)});document.querySelectorAll('.tab-btn').forEach(btn=>btn.onclick=()=>{let u=new URL(location.href);u.searchParams.set('tab',btn.dataset.tab);u.searchParams.delete('c');u.searchParams.delete('q');u.searchParams.delete('tag');location.href=u});const darkToggle=document.getElementById('darkModeToggle');if(localStorage.getItem('darkMode')==='true')document.body.classList.add('dark');darkToggle.onclick=()=>{document.body.classList.toggle('dark');localStorage.setItem('darkMode',document.body.classList.contains('dark'));darkToggle.textContent=document.body.classList.contains('dark')?'☀️':'🌙'};const goTop=document.getElementById('goTop');window.onscroll=()=>goTop.style.display=window.scrollY>300?'block':'none';goTop.onclick=()=>window.scrollTo({top:0,behavior:'smooth'});</script></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f7fafc;transition:background 0.3s}.sidebar{position:fixed;left:0;top:0;width:280px;height:100vh;background:white;box-shadow:2px 0 12px rgba(0,0,0,0.05);overflow-y:auto;z-index:100;transition:transform 0.3s}.sidebar-header{padding:20px;text-align:center;border-bottom:1px solid #e2e8f0}.sidebar-nav{padding:20px}.main{margin-left:280px;min-height:100vh}.header{position:relative;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:50px 40px 50px 60px;text-align:left;overflow:hidden}.header-bg-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}.header-content{position:relative;z-index:2}.header h1{font-size:42px;margin-bottom:12px}.content{max-width:1300px;margin:0 auto;padding:35px 30px}.content-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:25px;flex-wrap:wrap}.content-header h2{font-size:22px;color:#2d3748}.tab-buttons{display:flex;gap:10px}.tab-btn{padding:8px 20px;border:none;border-radius:30px;cursor:pointer}.tab-btn.active{background:#667eea;color:white}.tab-btn:not(.active){background:#e2e8f0}.sites-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:24px}.site-card,.blog-card{background:white;border-radius:12px;padding:16px;margin-bottom:20px;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s}.site-card:hover,.blog-card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.1)}.search-box{margin-bottom:20px}.search-box input{width:100%;padding:12px 16px;border:1px solid #ddd;border-radius:30px;font-size:14px}.tag-cloud{margin-bottom:20px;padding:15px;background:#f8fafc;border-radius:12px}.mobile-toggle{display:none;position:fixed;top:15px;left:15px;z-index:101;background:white;border:none;padding:10px;border-radius:10px;cursor:pointer}.dark-mode-toggle{position:fixed;bottom:20px;right:20px;background:#667eea;color:white;border:none;width:50px;height:50px;border-radius:50%;cursor:pointer;z-index:1000;font-size:20px}.go-top{position:fixed;bottom:20px;left:20px;background:#667eea;color:white;border:none;width:50px;height:50px;border-radius:50%;cursor:pointer;z-index:1000;display:none;font-size:20px}body.dark{background:#1a1a2e}body.dark .sidebar{background:#16213e;color:#eee}body.dark .site-card,body.dark .blog-card{background:#16213e;color:#eee}body.dark .content-header h2{color:#eee}body.dark .tag-cloud{background:#0f3460}body.dark .copy-btn{background:#2d3748!important;color:#a0aec0}@media (max-width:768px){.sidebar{transform:translateX(-100%)}.sidebar.open{transform:translateX(0)}.main{margin-left:0}.mobile-toggle{display:block}.header h1{font-size:28px}}
+</style></head>
+<body><button class="mobile-toggle" id="mobileToggle">☰</button><div class="sidebar" id="sidebar"><div class="sidebar-header">${logoHtml}</div><div class="sidebar-nav"><a href="/?tab=blog" style="display:block;padding:10px;background:#e2e8f0;border-radius:8px;text-align:center;margin-bottom:15px;text-decoration:none;color:#667eea;font-weight:600">📝 博客列表</a><div style="font-weight:600;margin:15px 0 10px">📁 书签分类</div>${catNavHtml || '<div>暂无分类</div>'}<div style="font-weight:600;margin:20px 0 10px">🔥 热门文章</div>${hotPostsHtml || '<div>暂无</div>'}<div style="margin-top:20px;padding-top:15px;border-top:1px solid #e2e8f0"><a href="/admin" style="display:block;padding:10px;background:#edf2f7;border-radius:8px;text-align:center;text-decoration:none">⚙️ 后台管理</a></div></div></div><div class="main"><div class="header">${headerBg ? `<img class="header-bg-img" src="${escapeHtml(headerBg)}">` : ''}<div class="header-content"><h1>${escapeHtml(siteTitle)}</h1><p>${escapeHtml(siteSubtitle)}</p><div>📅 ${new Date().toLocaleDateString('zh-CN')}</div></div></div><div class="content"><div class="content-header"><h2>${title}</h2><div class="tab-buttons"><button class="tab-btn ${currentTab === 'blog' ? 'active' : ''}" data-tab="blog">📝 博客</button><button class="tab-btn ${currentTab === 'bookmark' ? 'active' : ''}" data-tab="bookmark">🔖 书签</button></div></div><div id="blog-view" style="display:${currentTab === 'blog' ? 'block' : 'none'}"><div class="search-box"><form id="searchForm" onsubmit="event.preventDefault();let u=new URL(location.href);u.searchParams.set('q',this.q.value);location.href=u"><input type="text" name="q" placeholder="🔍 搜索文章..." value="${escapeHtml(searchQuery)}"></form></div>${tagCloudHtml ? `<div class="tag-cloud"><strong>🏷️ 热门标签：</strong> ${tagCloudHtml}</div>` : ''}${blogListHtml}</div><div id="bookmark-view" style="display:${currentTab === 'bookmark' ? 'block' : 'none'}"><div class="sites-grid">${cardsHtml}</div></div></div></div><button class="dark-mode-toggle" id="darkModeToggle">🌙</button><button class="go-top" id="goTop">↑</button><script>document.getElementById('mobileToggle').onclick=()=>document.getElementById('sidebar').classList.toggle('open');document.querySelectorAll('.copy-btn').forEach(btn=>btn.onclick=e=>{e.preventDefault();navigator.clipboard.writeText(btn.dataset.url);btn.textContent='✓';setTimeout(()=>btn.textContent='复制',1000)});document.querySelectorAll('.tab-btn').forEach(btn=>btn.onclick=()=>{let u=new URL(location.href);u.searchParams.set('tab',btn.dataset.tab);u.searchParams.delete('c');u.searchParams.delete('q');u.searchParams.delete('tag');location.href=u});const darkToggle=document.getElementById('darkModeToggle');if(localStorage.getItem('darkMode')==='true')document.body.classList.add('dark');darkToggle.onclick=()=>{document.body.classList.toggle('dark');localStorage.setItem('darkMode',document.body.classList.contains('dark'));darkToggle.textContent=document.body.classList.contains('dark')?'☀️':'🌙'};const goTop=document.getElementById('goTop');window.onscroll=()=>goTop.style.display=window.scrollY>300?'block':'none';goTop.onclick=()=>window.scrollTo({top:0,behavior:'smooth'});</script></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-// ==================== 文章详情页 ====================
 async function handlePost(request, kv) {
     const url = new URL(request.url);
     const id = parseInt(url.pathname.split('/')[2]);
@@ -191,7 +185,6 @@ async function handlePost(request, kv) {
     return new Response(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHtml(post.title)} - 旭儿导航</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:900px;margin:0 auto}.article{background:#fff;border-radius:20px;padding:40px}.cover-img{width:100%;max-height:300px;object-fit:cover;border-radius:12px;margin-bottom:24px}h1{font-size:28px;margin-bottom:16px}.meta{color:#888;font-size:14px;margin-bottom:30px;padding-bottom:16px;border-bottom:1px solid #eee}.tags{margin-top:8px}.tag{display:inline-block;background:#e2e8f0;padding:4px 12px;border-radius:20px;font-size:12px;margin-right:8px}.content{line-height:1.8;font-size:16px}.back-btn{display:inline-block;margin-top:30px;background:#667eea;color:#fff;padding:10px 24px;border-radius:30px;text-decoration:none}</style></head><body><div class="container"><div class="article">${post.coverImage ? `<img src="${escapeHtml(post.coverImage)}" class="cover-img" onerror="this.style.display='none'">` : ''}<h1>${escapeHtml(post.title)}</h1><div class="meta">${post.category ? `分类：${escapeHtml(post.category)} · ` : ''}发布时间：${new Date(post.createdAt).toLocaleDateString()} · 阅读：${views}次${post.tags && post.tags.length ? `<div class="tags">${post.tags.map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>` : ''}</div><div class="content">${post.content.replace(/\n/g, '<br>')}</div><a href="/" class="back-btn">← 返回首页</a></div></div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-// ==================== 后台管理 ====================
 async function handleAdmin(request, kv) {
     const cookie = request.headers.get('Cookie') || '';
     const match = cookie.match(/admin_token=([^;]+)/);
@@ -225,9 +218,7 @@ async function handleAdmin(request, kv) {
         if (postsData) posts = JSON.parse(postsData);
     } catch(e) { }
     
-    // 书签按 sort_order 排序
     sites.sort((a, b) => (a.sort_order || 9999) - (b.sort_order || 9999));
-    // 文章按置顶优先再按ID倒序
     posts.sort((a, b) => {
         if (a.pinned && !b.pinned) return -1;
         if (!a.pinned && b.pinned) return 1;
@@ -275,7 +266,7 @@ th{background:#f8fafc;font-weight:600}
 .ql-editor{min-height:300px}
 </style></head>
 <body><div class="container"><div class="header"><h1>📚 管理后台</h1><button id="changePwdBtn" class="btn-warning" style="background:#ed8936">🔑 修改密码</button><a href="/logout" style="background:rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:8px;text-decoration:none">退出登录</a></div>
-<div class="card"><div class="card-title">📝 文章管理</div><div style="margin-bottom:16px"><button id="newPostBtn" class="btn-primary">✏️ 写新文章</button></div><div style="overflow-x:auto"></td><thead><tr><th>ID</th><th>标题</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead><tbody id="postsList"></tbody></table></div></div>
+<div class="card"><div class="card-title">📝 文章管理</div><div style="margin-bottom:16px"><button id="newPostBtn" class="btn-primary">✏️ 写新文章</button></div><div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>标题</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead><tbody id="postsList"></tbody></table></div></div>
 <div class="card"><div class="card-title">🔖 书签管理</div>
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
     <input type="text" id="siteName" placeholder="网站名称" style="padding:10px;border:1px solid #e2e8f0;border-radius:8px">
@@ -318,7 +309,6 @@ renderPosts();renderSites();
 </script></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-// ==================== API ====================
 async function handleApi(request, kv) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -343,8 +333,7 @@ async function handleApi(request, kv) {
         const id = parseInt(path.split('/')[3]);
         let sites = [];
         try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { }
-        const newSites = sites.filter(s => s.id !== id);
-        await kv.put('sites', JSON.stringify(newSites));
+        await kv.put('sites', JSON.stringify(sites.filter(s => s.id !== id)));
         return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
     }
     if (request.method === 'GET' && path === '/api/blog') {
