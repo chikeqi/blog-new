@@ -300,7 +300,7 @@ async function handleLogout(request, kv) {
     return new Response(null, {
         status: 302,
         headers: {
-            'Location': '/admin',
+            'Location': '/',  // 改成首页
             'Set-Cookie': 'admin_token=; Path=/; HttpOnly; Max-Age=0'
         }
     });
