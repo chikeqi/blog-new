@@ -1,4 +1,4 @@
-// 旭儿导航 - 书签管理 + 文章管理 + 文章详情页 #2
+// 旭儿导航 - 书签管理 + 文章管理 + 文章详情页 + 完整编辑功能 #3
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -191,6 +191,10 @@ async function handleAdmin(request, kv) {
         .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 12px; }
         .status-published { background: #d4edda; color: #155724; }
         .status-draft { background: #fff3cd; color: #856404; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; border-radius: 16px; padding: 24px; width: 90%; max-width: 600px; }
+        .modal-header { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .close-btn { font-size: 24px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -248,6 +252,37 @@ async function handleAdmin(request, kv) {
         </div>
     </div>
     
+    <!-- 编辑文章弹窗 -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>编辑文章</h3>
+                <span class="close-btn" onclick="closeEditModal()">&times;</span>
+            </div>
+            <input type="hidden" id="editId">
+            <div class="form-group">
+                <label>标题</label>
+                <input type="text" id="editTitle" style="width:100%">
+            </div>
+            <div class="form-group">
+                <label>分类</label>
+                <input type="text" id="editCategory" style="width:100%">
+            </div>
+            <div class="form-group">
+                <label>状态</label>
+                <select id="editStatus" style="width:100%">
+                    <option value="published">发布</option>
+                    <option value="draft">草稿</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>内容</label>
+                <textarea id="editContent" rows="8" style="width:100%"></textarea>
+            </div>
+            <button onclick="saveEdit()" style="margin-top:10px">保存修改</button>
+        </div>
+    </div>
+    
     <script>
         let allPosts = ${JSON.stringify(posts)};
         let allSites = ${JSON.stringify(sites)};
@@ -267,20 +302,61 @@ async function handleAdmin(request, kv) {
             if (filter) filtered = allPosts.filter(p => p.title.toLowerCase().includes(filter.toLowerCase()));
             tbody.innerHTML = filtered.map(p => \`
                 <tr>
-                    <td><strong>\${escape(p.title)}</strong></td>
+                    <td><strong>\${escape(p.title)}</strong></span>${p.status === 'draft' ? ' <span style="color:#856404;font-size:12px;">[草稿]</span>' : ''}</td>
                     <td>\${escape(p.category || '未分类')}</td>
-                    <td><span class="status-badge \${p.status === 'published' ? 'status-published' : 'status-draft'}">\${p.status === 'published' ? '已发布' : '草稿'}</span></td>
-                    <td>\${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '-'}</td>
+                    <td><span class="status-badge \${p.status === 'published' ? 'status-published' : 'status-draft'}">\${p.status === 'published' ? '已发布' : '草稿'}</span></span></td>
+                    <td>\${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '-'}</span></span></td>
                     <td>
-                        <button onclick="editPost(\${p.id})" style="background:#ed8936;">编辑</button>
+                        <button onclick="openEditModal(\${p.id})" style="background:#ed8936;">编辑</button>
                         <button class="delete-btn" onclick="deletePost(\${p.id})">删除</button>
-                    </td>
+                    </span></span>
                 </tr>
             \`).join('');
         }
         
         function searchPosts() {
             renderPosts(document.getElementById('searchPost').value);
+        }
+        
+        // 打开编辑弹窗
+        function openEditModal(id) {
+            const post = allPosts.find(p => p.id === id);
+            if (!post) return;
+            document.getElementById('editId').value = post.id;
+            document.getElementById('editTitle').value = post.title;
+            document.getElementById('editCategory').value = post.category || '';
+            document.getElementById('editStatus').value = post.status || 'published';
+            document.getElementById('editContent').value = post.content || '';
+            document.getElementById('editModal').style.display = 'flex';
+        }
+        
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+        }
+        
+        // 保存编辑
+        async function saveEdit() {
+            const id = parseInt(document.getElementById('editId').value);
+            const title = document.getElementById('editTitle').value.trim();
+            const category = document.getElementById('editCategory').value.trim();
+            const status = document.getElementById('editStatus').value;
+            const content = document.getElementById('editContent').value;
+            
+            if (!title || !content) {
+                alert('请填写标题和内容');
+                return;
+            }
+            
+            const res = await fetch('/api/blog/' + id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, category, status, content })
+            });
+            if (res.ok) {
+                location.reload();
+            } else {
+                alert('保存失败');
+            }
         }
         
         async function addPost() {
@@ -298,20 +374,6 @@ async function handleAdmin(request, kv) {
             else alert('发布失败');
         }
         
-        async function editPost(id) {
-            const post = allPosts.find(p => p.id === id);
-            if (!post) return;
-            const newTitle = prompt('修改标题', post.title);
-            if (newTitle && newTitle !== post.title) {
-                const res = await fetch('/api/blog/' + id, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: newTitle })
-                });
-                if (res.ok) location.reload();
-            }
-        }
-        
         async function deletePost(id) {
             if (!confirm('确定删除？')) return;
             const res = await fetch('/api/blog/' + id, { method: 'DELETE' });
@@ -323,10 +385,10 @@ async function handleAdmin(request, kv) {
             const tbody = document.getElementById('bookmarkList');
             tbody.innerHTML = allSites.map(s => \`
                 <tr>
-                    <td><strong>\${escape(s.name)}</strong></td>
-                    <td><a href="\${s.url}" target="_blank">\${escape(s.url)}</a></td>
-                    <td>\${escape(s.catelog)}</span></td>
-                    <td><button class="delete-btn" onclick="deleteBookmark(\${s.id})">删除</button></td>
+                    <td><strong>\${escape(s.name)}</strong></span></td>
+                    <td><a href="\${s.url}" target="_blank">\${escape(s.url)}</a></span></td>
+                    <td>\${escape(s.catelog)}</span></span></span></td>
+                    <td><button class="delete-btn" onclick="deleteBookmark(\${s.id})">删除</button></span></td>
                 </tr>
             \`).join('');
         }
@@ -414,7 +476,14 @@ async function handleApi(request, kv) {
         try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
         const index = posts.findIndex(p => p.id === id);
         if (index !== -1) {
-            posts[index] = { ...posts[index], ...body, updatedAt: new Date().toISOString() };
+            posts[index] = { 
+                ...posts[index], 
+                title: body.title !== undefined ? body.title : posts[index].title,
+                content: body.content !== undefined ? body.content : posts[index].content,
+                category: body.category !== undefined ? body.category : posts[index].category,
+                status: body.status !== undefined ? body.status : posts[index].status,
+                updatedAt: new Date().toISOString()
+            };
             await kv.put('blog_posts', JSON.stringify(posts));
         }
         return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
@@ -439,7 +508,7 @@ async function handleLogout(request, kv) {
     });
 }
 
-// ==================== 文章详情页 #2 ====================
+// ==================== 文章详情页 ====================
 async function handlePost(request, kv) {
     const url = new URL(request.url);
     const id = parseInt(url.pathname.split('/')[2]);
@@ -456,11 +525,10 @@ async function handlePost(request, kv) {
     
     const post = posts.find(p => p.id === id);
     
-    if (!post) {
-        return new Response('文章不存在', { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    if (!post || post.status !== 'published') {
+        return new Response('文章不存在或未发布', { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
     
-    // 增加阅读量
     let views = 0;
     try {
         const viewsData = await kv.get(`views:${id}`);
