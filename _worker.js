@@ -1,4 +1,4 @@
-// 旭儿导航 - 最终完整版（含国内线路切换）
+// 旭儿导航 - 最终修复版（文章列表+书签列表+国内线路）
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -122,7 +122,6 @@ async function handleHome(request, kv) {
         return new Date(b.createdAt) - new Date(a.createdAt);
     });
     
-    // 取前10篇用于首页显示
     const recentPosts = blogPosts.slice(0, 10);
     
     const tagMap = new Map();
@@ -151,7 +150,7 @@ async function handleHome(request, kv) {
     const logo = await kv.get('site_logo') || '';
     const logoLink = await kv.get('site_logo_link') || '';
     const headerBg = await kv.get('header_bg') || '';
-    const cnLink = await kv.get('cn_link') || '';  // 国内线路链接
+    const cnLink = await kv.get('cn_link') || '';
     
     let logoHtml = '';
     if (logo) {
@@ -234,7 +233,7 @@ async function handleAdmin(request, kv) {
     const siteLogo = await kv.get('site_logo') || '';
     const siteLogoLink = await kv.get('site_logo_link') || '';
     const headerBg = await kv.get('header_bg') || '';
-    const cnLink = await kv.get('cn_link') || '';  // 国内线路链接
+    const cnLink = await kv.get('cn_link') || '';
     
     return new Response(`<!DOCTYPE html>
 <html lang="zh-CN">
@@ -287,7 +286,7 @@ th{background:#f8fafc;font-weight:600}
     <textarea id="siteDesc" rows="2" placeholder="描述（可选）" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px"></textarea>
 </div>
 <button onclick="addSite()" class="btn-primary" style="margin-bottom:16px">➕ 添加书签</button>
-<div style="overflow-x:auto"><tr><thead><tr><th>ID</th><th>名称</th><th>网址</th><th>分类</th><th>排序</th><th>操作</th></tr></thead><tbody id="sitesList"></tbody></table></div></div>
+<div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>名称</th><th>网址</th><th>分类</th><th>排序</th><th>操作</th></tr></thead><tbody id="sitesList"></tbody></table></div></div>
 <div class="card"><div class="card-title">⚙️ 站点设置</div><div class="form-row"><div class="form-group"><label>站点标题</label><input type="text" id="siteTitle" value="${escapeHtml(siteTitle)}"></div><div class="form-group"><label>站点副标题</label><input type="text" id="siteSubtitle" value="${escapeHtml(siteSubtitle)}"></div></div><div class="form-row"><div class="form-group"><label>Logo URL</label><div style="display:flex;gap:10px"><input type="url" id="logoUrl" value="${escapeHtml(siteLogo)}" style="flex:1"><button id="uploadLogoBtn" class="btn-warning">上传图片</button></div></div><div class="form-group"><label>Logo 跳转链接</label><input type="url" id="logoLink" value="${escapeHtml(siteLogoLink)}"></div></div><div class="form-group"><label>页眉背景图 URL</label><div style="display:flex;gap:10px"><input type="url" id="headerBgUrl" value="${escapeHtml(headerBg)}" style="flex:1"><button id="uploadHeaderBgBtn" class="btn-warning">上传图片</button></div></div>
 <div class="form-group"><label>🇨🇳 国内线路链接</label><input type="url" id="cnLink" value="${escapeHtml(cnLink)}" placeholder="https://你的国内备用域名.com" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px"></div>
 <button id="saveSettingsBtn" class="btn-primary">保存设置</button><span id="settingsStatus" style="margin-left:12px;font-size:13px"></span></div></div>
@@ -299,8 +298,8 @@ let allSites = ${JSON.stringify(sites)};
 let quill = null;
 function escape(str){if(!str)return '';return String(str).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}
 function initQuill(){if(quill)return;quill=new Quill('#quill-editor',{theme:'snow',placeholder:'在这里写下你的文章内容...',modules:{toolbar:[['bold','italic','underline','strike'],[{color:[]},{background:[]}],[{list:'ordered'},{list:'bullet'}],['blockquote','code-block'],['link','image'],[{align:[]}],['clean']]}});quill.on('text-change',()=>{document.getElementById('postContent').value=quill.root.innerHTML;});}
-function renderPosts(){let sorted=[...allPosts];sorted.sort((a,b)=>{if(a.pinned&&!b.pinned)return-1;if(!a.pinned&&b.pinned)return1;return b.id-a.id;});document.getElementById('postsList').innerHTML=sorted.map(p=>'<tr><td>'+p.id+'</td><td><strong>'+escape(p.title)+'</strong>'+(p.pinned?'<span class="pin-badge">📌置顶</span>':'')+'</td><td>'+escape(p.category||'未分类')+'</td><td><span class="status-badge '+(p.status==='published'?'status-published':'status-draft')+'">'+(p.status==='published'?'已发布':'草稿')+'</span></td><td>'+new Date(p.createdAt).toLocaleDateString()+'</td><td class="actions"><button class="btn-warning" onclick="editPost('+p.id+')">编辑</button><button class="btn-danger" onclick="deletePost('+p.id+')">删除</button></td></tr>').join('');}
-function renderSites(){document.getElementById('sitesList').innerHTML=allSites.map(s=>'<tr><td>'+s.id+'</td><td><strong>'+escape(s.name)+'</strong></td><td><a href="'+escape(s.url)+'" target="_blank">'+escape(s.url).substring(0,50)+'</a></td><td>'+escape(s.catelog)+'</td><td>'+(s.sort_order||9999)+'</td><td class="actions"><button class="btn-danger" onclick="deleteSite('+s.id+')">删除</button></td></tr>').join('');}
+function renderPosts(){let sorted=[...allPosts];sorted.sort((a,b)=>{if(a.pinned&&!b.pinned)return-1;if(!a.pinned&&b.pinned)return1;return b.id-a.id;});let html='';for(let p of sorted){html+='<tr><td>'+p.id+'</td><td><strong>'+escape(p.title)+'</strong>'+(p.pinned?'<span class="pin-badge">📌置顶</span>':'')+'</td><td>'+escape(p.category||'未分类')+'</td><td><span class="status-badge '+(p.status==='published'?'status-published':'status-draft')+'">'+(p.status==='published'?'已发布':'草稿')+'</span></td><td>'+new Date(p.createdAt).toLocaleDateString()+'</td><td class="actions"><button class="btn-warning" onclick="editPost('+p.id+')">编辑</button><button class="btn-danger" onclick="deletePost('+p.id+')">删除</button></td></tr>';}document.getElementById('postsList').innerHTML=html;}
+function renderSites(){let html='';for(let s of allSites){html+='<tr><td>'+s.id+'</td><td><strong>'+escape(s.name)+'</strong></td><td><a href="'+escape(s.url)+'" target="_blank">'+escape(s.url).substring(0,50)+'</a></td><td>'+escape(s.catelog)+'</td><td>'+(s.sort_order||9999)+'</td><td class="actions"><button class="btn-danger" onclick="deleteSite('+s.id+')">删除</button></td></tr>';}document.getElementById('sitesList').innerHTML=html;}
 function openPostModal(id){initQuill();if(id){let p=allPosts.find(p=>p.id==id);if(p){document.getElementById('postId').value=p.id;document.getElementById('postTitle').value=p.title;document.getElementById('postCategory').value=p.category||'';document.getElementById('postCoverImage').value=p.coverImage||'';document.getElementById('postExcerpt').value=p.excerpt||'';document.getElementById('postStatus').value=p.status||'published';document.getElementById('postTags').value=(p.tags||[]).join(',');document.getElementById('postPinned').checked=p.pinned||false;quill.root.innerHTML=p.content||'';document.getElementById('postContent').value=quill.root.innerHTML;document.getElementById('modalTitle').innerText='编辑文章';}}else{document.getElementById('postId').value='';document.getElementById('postTitle').value='';document.getElementById('postCategory').value='';document.getElementById('postCoverImage').value='';document.getElementById('postExcerpt').value='';document.getElementById('postStatus').value='published';document.getElementById('postTags').value='';document.getElementById('postPinned').checked=false;quill.root.innerHTML='';document.getElementById('postContent').value='';document.getElementById('modalTitle').innerText='写新文章';}document.getElementById('postModal').style.display='flex';}
 function closePostModal(){document.getElementById('postModal').style.display='none';}
 async function savePost(){if(quill)document.getElementById('postContent').value=quill.root.innerHTML;let id=document.getElementById('postId').value;let data={title:document.getElementById('postTitle').value.trim(),category:document.getElementById('postCategory').value.trim(),coverImage:document.getElementById('postCoverImage').value.trim(),excerpt:document.getElementById('postExcerpt').value.trim(),content:document.getElementById('postContent').value,status:document.getElementById('postStatus').value,tags:document.getElementById('postTags').value.split(',').map(t=>t.trim()).filter(t=>t),pinned:document.getElementById('postPinned').checked};if(!data.title||!data.content||data.content==='<p><br></p>'){alert('请填写标题和内容');return;}let url=id?'/api/blog/'+id:'/api/blog';let method=id?'PUT':'POST';let r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let d=await r.json();if(d.code===200||d.code===201){alert(id?'更新成功':'发布成功');closePostModal();location.reload();}else alert('操作失败');}
