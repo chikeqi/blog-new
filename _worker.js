@@ -1,4 +1,4 @@
-// 旭儿导航 - #6 (添加文章标签功能)
+// 旭儿导航 - #7 (添加分页功能)
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -16,6 +16,8 @@ export default {
 async function handleHome(request, kv) {
     const url = new URL(request.url);
     const tagFilter = url.searchParams.get('tag') || '';
+    const page = parseInt(url.searchParams.get('page')) || 1;
+    const pageSize = 5;
     
     let sites = [], posts = [];
     try {
@@ -29,6 +31,12 @@ async function handleHome(request, kv) {
     if (tagFilter) {
         publishedPosts = publishedPosts.filter(p => p.tags && p.tags.includes(tagFilter));
     }
+    publishedPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    const totalPosts = publishedPosts.length;
+    const totalPages = Math.ceil(totalPosts / pageSize);
+    const startIndex = (page - 1) * pageSize;
+    const pagePosts = publishedPosts.slice(startIndex, startIndex + pageSize);
     
     // 统计所有标签
     const tagCount = new Map();
@@ -39,17 +47,26 @@ async function handleHome(request, kv) {
     });
     const tagsList = Array.from(tagCount.entries()).sort((a, b) => b[1] - a[1]).slice(0, 15);
     
-    const recentPosts = publishedPosts.slice(0, 5);
+    // 生成分页HTML
+    let paginationHtml = '';
+    if (totalPages > 1) {
+        let pages = [];
+        for (let i = 1; i <= totalPages; i++) {
+            const activeClass = i === page ? 'background:#667eea;color:#fff' : 'background:#e2e8f0;color:#333';
+            pages.push(`<a href="/?page=${i}${tagFilter ? `&tag=${encodeURIComponent(tagFilter)}` : ''}" style="display:inline-block;padding:6px 12px;margin:0 4px;border-radius:8px;text-decoration:none;${activeClass}">${i}</a>`);
+        }
+        paginationHtml = `<div style="margin-top:20px;text-align:center">${pages.join('')}</div>`;
+    }
     
     return new Response(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><title>旭儿导航${tagFilter ? ' - ' + tagFilter : ''}</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:1200px;margin:0 auto}.header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:40px;border-radius:20px;margin-bottom:30px;text-align:center}.section{background:#fff;border-radius:16px;padding:24px;margin-bottom:24px}.section h2{margin-bottom:20px;font-size:20px;border-left:4px solid #667eea;padding-left:12px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}.card{background:#f8f9fa;border-radius:12px;padding:16px}.card a{text-decoration:none;color:#333;display:block}.card h3{font-size:16px;color:#667eea}.post-item{border-bottom:1px solid #eee;padding:12px 0;display:flex;gap:16px;align-items:center}.post-cover{width:70px;height:50px;object-fit:cover;border-radius:8px;background:#e2e8f0}.post-info{flex:1}.post-title{font-weight:600;color:#333;text-decoration:none}.post-title:hover{color:#667eea}.post-meta{font-size:12px;color:#888;margin-top:6px}.tag-cloud{margin-bottom:20px;padding:16px;background:#f8f9fa;border-radius:12px}.tag-cloud a{display:inline-block;margin:4px 8px;text-decoration:none;color:#667eea}.tag-cloud a:hover{text-decoration:underline}.admin-btn{display:inline-block;margin-top:20px;background:#667eea;color:#fff;padding:10px 24px;border-radius:30px;text-decoration:none}.filter-bar{margin-bottom:16px}.filter-bar a{color:#667eea;text-decoration:none}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:1200px;margin:0 auto}.header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:40px;border-radius:20px;margin-bottom:30px;text-align:center}.section{background:#fff;border-radius:16px;padding:24px;margin-bottom:24px}.section h2{margin-bottom:20px;font-size:20px;border-left:4px solid #667eea;padding-left:12px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}.card{background:#f8f9fa;border-radius:12px;padding:16px}.card a{text-decoration:none;color:#333;display:block}.card h3{font-size:16px;color:#667eea}.post-item{border-bottom:1px solid #eee;padding:12px 0;display:flex;gap:16px;align-items:center}.post-cover{width:70px;height:50px;object-fit:cover;border-radius:8px;background:#e2e8f0}.post-info{flex:1}.post-title{font-weight:600;color:#333;text-decoration:none}.post-title:hover{color:#667eea}.post-meta{font-size:12px;color:#888;margin-top:6px}.tag-cloud{margin-bottom:20px;padding:16px;background:#f8f9fa;border-radius:12px}.tag-cloud a{display:inline-block;margin:4px 8px;text-decoration:none;color:#667eea}.tag-cloud a:hover{text-decoration:underline}.admin-btn{display:inline-block;margin-top:20px;background:#667eea;color:#fff;padding:10px 24px;border-radius:30px;text-decoration:none}
 </style></head>
 <body><div class="container"><div class="header"><h1>📚 旭儿导航</h1><p>精选网站 · 优质博客</p></div>
 <div class="section"><h2>🏷️ 热门标签</h2><div class="tag-cloud">${tagsList.map(([tag, count]) => `<a href="/?tag=${encodeURIComponent(tag)}">#${escapeHtml(tag)} (${count})</a>`).join('')}${tagsList.length === 0 ? '暂无标签' : ''}${tagFilter ? `<a href="/" style="margin-left:16px;color:#888">清除筛选</a>` : ''}</div></div>
-<div class="section"><h2>📖 ${tagFilter ? `标签「${escapeHtml(tagFilter)}」相关文章` : '最新文章'}</h2>${recentPosts.map(p => `<div class="post-item">${p.coverImage ? `<img src="${escapeHtml(p.coverImage)}" class="post-cover" onerror="this.style.display='none'">` : '<div class="post-cover" style="display:flex;align-items:center;justify-content:center">📄</div>'}<div class="post-info"><a href="/post/${p.id}" class="post-title">${escapeHtml(p.title)}</a><div class="post-meta">${p.tags && p.tags.length ? p.tags.map(t => `#${escapeHtml(t)} `).join('') : ''}${p.category ? `· ${escapeHtml(p.category)}` : ''} · 📅 ${new Date(p.createdAt).toLocaleDateString()}</div></div></div>`).join('')}${recentPosts.length === 0 ? '<div style="padding:20px;text-align:center">暂无文章</div>' : ''}</div>
+<div class="section"><h2>📖 ${tagFilter ? `标签「${escapeHtml(tagFilter)}」相关文章` : '最新文章'}</h2>${pagePosts.map(p => `<div class="post-item">${p.coverImage ? `<img src="${escapeHtml(p.coverImage)}" class="post-cover" onerror="this.style.display='none'">` : '<div class="post-cover" style="display:flex;align-items:center;justify-content:center">📄</div>'}<div class="post-info"><a href="/post/${p.id}" class="post-title">${escapeHtml(p.title)}</a><div class="post-meta">${p.tags && p.tags.length ? p.tags.map(t => `#${escapeHtml(t)} `).join('') : ''}${p.category ? `· ${escapeHtml(p.category)}` : ''} · 📅 ${new Date(p.createdAt).toLocaleDateString()}</div></div></div>`).join('')}${pagePosts.length === 0 ? '<div style="padding:20px;text-align:center">暂无文章</div>' : ''}${paginationHtml}</div>
 <div class="section"><h2>🔖 常用网站</h2><div class="grid">${sites.map(s => `<div class="card"><a href="${s.url}" target="_blank"><h3>${escapeHtml(s.name)}</h3><p>${escapeHtml(s.catelog)}</p></a></div>`).join('')}${sites.length === 0 ? '<div style="padding:20px;text-align:center">暂无书签</div>' : ''}</div></div>
 <div style="text-align:center"><a href="/admin" class="admin-btn">⚙️ 后台管理</a></div></div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
@@ -90,7 +107,7 @@ body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:
 </style></head>
 <body><div class="container"><div class="header"><h1>📚 管理后台</h1><a href="/logout" style="color:#e53e3e">退出登录</a></div>
 <div class="card"><h3>📝 发布文章</h3><div class="form-group"><input type="text" id="postTitle" placeholder="文章标题"></div><div class="form-group"><input type="text" id="postCategory" placeholder="分类"><input type="text" id="postTags" placeholder="标签（用逗号分隔，如：技术,生活）"><input type="url" id="postCoverImage" placeholder="封面图 URL"><select id="postStatus"><option value="published">发布</option><option value="draft">草稿</option></select></div><div class="form-group"><textarea id="postContent" rows="6" placeholder="文章内容..."></textarea></div><button onclick="addPost()">发布文章</button></div>
-<div class="card"><h3>📖 文章列表</h3><div class="form-group"><input type="text" id="searchPost" placeholder="搜索文章..." onkeyup="searchPosts()"></div><table><thead><tr><th>标题</th><th>标签</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead><tbody id="postList"></tbody></table></div>
+<div class="card"><h3>📖 文章列表</h3><div class="form-group"><input type="text" id="searchPost" placeholder="搜索文章..." onkeyup="searchPosts()"></div></table><thead><tr><th>标题</th><th>标签</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead><tbody id="postList"></tbody></table></div>
 <div class="card"><h3>➕ 添加书签</h3><div class="form-group"><input type="text" id="siteName" placeholder="网站名称"><input type="url" id="siteUrl" placeholder="网址"><input type="text" id="siteCat" placeholder="分类"><button onclick="addBookmark()">添加</button></div></div>
 <div class="card"><h3>🔖 书签列表</h3><table><thead><tr><th>名称</th><th>网址</th><th>分类</th><th>操作</th></tr></thead><tbody id="bookmarkList"></tbody></table></div></div>
 <div id="editModal" class="modal"><div class="modal-content"><div style="display:flex;justify-content:space-between"><h3>编辑文章</h3><span onclick="closeEditModal()" style="font-size:24px;cursor:pointer">&times;</span></div><input type="hidden" id="editId"><div class="form-group"><label>标题</label><input type="text" id="editTitle"></div><div class="form-group"><label>分类</label><input type="text" id="editCategory"></div><div class="form-group"><label>标签</label><input type="text" id="editTags" placeholder="用逗号分隔"></div><div class="form-group"><label>封面图 URL</label><input type="url" id="editCoverImage"></div><div class="form-group"><label>状态</label><select id="editStatus"><option value="published">发布</option><option value="draft">草稿</option></select></div><div class="form-group"><label>内容</label><textarea id="editContent" rows="8"></textarea></div><button onclick="saveEdit()">保存修改</button></div></div>
@@ -105,7 +122,7 @@ function closeEditModal(){document.getElementById('editModal').style.display='no
 async function saveEdit(){let id=document.getElementById('editId').value;let title=document.getElementById('editTitle').value.trim();let category=document.getElementById('editCategory').value.trim();let tagsStr=document.getElementById('editTags').value.trim();let tags=tagsStr?tagsStr.split(',').map(t=>t.trim()).filter(t=>t):[];let coverImage=document.getElementById('editCoverImage').value.trim();let status=document.getElementById('editStatus').value;let content=document.getElementById('editContent').value;if(!title||!content){alert('请填写标题和内容');return;}let r=await fetch('/api/blog/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,category,tags,coverImage,status,content})});if(r.ok)location.reload();else alert('保存失败');}
 async function addPost(){let title=document.getElementById('postTitle').value.trim();let category=document.getElementById('postCategory').value.trim();let tagsStr=document.getElementById('postTags').value.trim();let tags=tagsStr?tagsStr.split(',').map(t=>t.trim()).filter(t=>t):[];let coverImage=document.getElementById('postCoverImage').value.trim();let status=document.getElementById('postStatus').value;let content=document.getElementById('postContent').value;if(!title||!content){alert('请填写标题和内容');return;}let r=await fetch('/api/blog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,category,tags,coverImage,status,content})});if(r.ok)location.reload();else alert('发布失败');}
 async function deletePost(id){if(!confirm('确定删除？'))return;let r=await fetch('/api/blog/'+id,{method:'DELETE'});if(r.ok)location.reload();else alert('删除失败');}
-function renderBookmarks(){document.getElementById('bookmarkList').innerHTML=allSites.map(s=>'<tr><td><strong>'+escape(s.name)+'</strong><td><a href="'+escape(s.url)+'" target="_blank">'+escape(s.url)+'</a></td><td>'+escape(s.catelog)+'</span></td><td><button class="delete-btn" onclick="deleteBookmark('+s.id+')">删除</button></td></tr>').join('');}
+function renderBookmarks(){document.getElementById('bookmarkList').innerHTML=allSites.map(s=>'<tr><td><strong>'+escape(s.name)+'</strong></td>:<a href="'+escape(s.url)+'" target="_blank">'+escape(s.url)+'</a></td><td>'+escape(s.catelog)+'</span></td><td><button class="delete-btn" onclick="deleteBookmark('+s.id+')">删除</button></td></tr>').join('');}
 async function addBookmark(){let name=document.getElementById('siteName').value.trim();let url=document.getElementById('siteUrl').value.trim();let catelog=document.getElementById('siteCat').value.trim();if(!name||!url||!catelog){alert('请填写完整');return;}let r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,url,catelog})});if(r.ok)location.reload();else alert('添加失败');}
 async function deleteBookmark(id){if(!confirm('确定删除？'))return;let r=await fetch('/api/config/'+id,{method:'DELETE'});if(r.ok)location.reload();else alert('删除失败');}
 renderPosts();renderBookmarks();
