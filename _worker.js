@@ -1,4 +1,4 @@
-// 旭儿导航 - #9 (完整后台：Quill编辑器 + 图片上传 + 站点设置 + 修改密码)
+// 旭儿导航 - #10 (完整修复版：包含上传路由)
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -8,16 +8,88 @@ export default {
         if (path === '/admin') return handleAdmin(request, kv);
         if (path === '/logout') return handleLogout(request, kv);
         if (path.startsWith('/post/')) return handlePost(request, kv);
-        if (path.startsWith('/api/')) return handleApi(request, kv);
         if (path.startsWith('/api/upload')) return handleUpload(request, kv);
         if (path.startsWith('/api/image/')) return handleImage(request, kv);
+        if (path.startsWith('/api/')) return handleApi(request, kv);
         return handleHome(request, kv);
     }
 };
 
-// ==================== 首页（与#8相同，略过，保持现有布局）====================
+// ==================== 图片上传处理 ====================
+async function handleUpload(request, kv) {
+    const cookie = request.headers.get('Cookie') || '';
+    const match = cookie.match(/admin_token=([^;]+)/);
+    let isLoggedIn = false;
+    if (match) {
+        const session = await kv.get(`session:${match[1]}`);
+        isLoggedIn = session !== null;
+    }
+    if (!isLoggedIn) {
+        return new Response(JSON.stringify({ code: 401, message: '未登录' }), { 
+            status: 401, 
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+    
+    if (request.method !== 'POST') {
+        return new Response(JSON.stringify({ code: 405, message: 'Method not allowed' }), { 
+            status: 405, 
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+    
+    try {
+        const formData = await request.formData();
+        const file = formData.get('image');
+        if (!file || !file.type || !file.type.startsWith('image/')) {
+            return new Response(JSON.stringify({ code: 400, message: '请选择图片文件' }), { 
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            return new Response(JSON.stringify({ code: 400, message: '图片不能超过5MB' }), { 
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+        
+        const bytes = await file.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(bytes)));
+        const ext = file.type.split('/')[1] || 'jpg';
+        const filename = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${ext}`;
+        await kv.put(`img:${filename}`, `data:${file.type};base64,${base64}`, { expirationTtl: 86400 * 30 });
+        
+        return new Response(JSON.stringify({ code: 200, url: `/api/image/${filename}` }), { 
+            headers: { 'Content-Type': 'application/json' }
+        });
+    } catch (e) {
+        return new Response(JSON.stringify({ code: 500, message: e.message }), { 
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+}
+
+// ==================== 图片获取 ====================
+async function handleImage(request, kv) {
+    const url = new URL(request.url);
+    const filename = url.pathname.split('/').pop();
+    if (!filename) return new Response('Not found', { status: 404 });
+    
+    const data = await kv.get(`img:${filename}`);
+    if (!data) return new Response('Not found', { status: 404 });
+    
+    const match = data.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!match) return new Response('Invalid image data', { status: 500 });
+    
+    return new Response(Uint8Array.from(atob(match[2]), c => c.charCodeAt(0)), {
+        headers: { 
+            'Content-Type': match[1], 
+            'Cache-Control': 'public, max-age=86400' 
+        }
+    });
+}
+
+// ==================== 首页（保持原有布局）====================
 async function handleHome(request, kv) {
-    // 保持与#8完全相同的首页代码
     const url = new URL(request.url);
     const currentTab = url.searchParams.get('tab') || 'blog';
     const searchQuery = url.searchParams.get('q') || '';
@@ -53,8 +125,8 @@ async function handleHome(request, kv) {
     
     let cardsHtml = filteredSites.map(s => {
         const name = escapeHtml(s.name || '未命名');
-        const url_clean = s.url.startsWith('http') ? s.url : 'https://' + s.url;
-        const logo_clean = s.logo ? s.logo : '';
+        const url_clean = s.url && s.url.startsWith('http') ? s.url : 'https://' + (s.url || '');
+        const logo_clean = s.logo || '';
         const desc = escapeHtml(s.desc || '暂无描述');
         const cat = escapeHtml(s.catelog || '未分类');
         const initial = (s.name && s.name[0]) || '站';
@@ -132,7 +204,7 @@ async function handlePost(request, kv) {
     return new Response(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHtml(post.title)} - 旭儿导航</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:900px;margin:0 auto}.article{background:#fff;border-radius:20px;padding:40px}.cover-img{width:100%;max-height:300px;object-fit:cover;border-radius:12px;margin-bottom:24px}h1{font-size:28px;margin-bottom:16px}.meta{color:#888;font-size:14px;margin-bottom:30px;padding-bottom:16px;border-bottom:1px solid #eee}.tags{margin-top:8px}.tag{display:inline-block;background:#e2e8f0;padding:4px 12px;border-radius:20px;font-size:12px;margin-right:8px}.content{line-height:1.8;font-size:16px}.back-btn{display:inline-block;margin-top:30px;background:#667eea;color:#fff;padding:10px 24px;border-radius:30px;text-decoration:none}</style></head><body><div class="container"><div class="article">${post.coverImage ? `<img src="${escapeHtml(post.coverImage)}" class="cover-img" onerror="this.style.display='none'">` : ''}<h1>${escapeHtml(post.title)}</h1><div class="meta">${post.category ? `分类：${escapeHtml(post.category)} · ` : ''}发布时间：${new Date(post.createdAt).toLocaleDateString()} · 阅读：${views}次${post.tags && post.tags.length ? `<div class="tags">${post.tags.map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>` : ''}</div><div class="content">${post.content.replace(/\n/g, '<br>')}</div><a href="/" class="back-btn">← 返回首页</a></div></div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-// ==================== 完整后台管理（Quill + 图片上传 + 站点设置 + 修改密码）====================
+// ==================== 后台管理 ====================
 async function handleAdmin(request, kv) {
     const cookie = request.headers.get('Cookie') || '';
     const match = cookie.match(/admin_token=([^;]+)/);
@@ -142,7 +214,6 @@ async function handleAdmin(request, kv) {
         isLoggedIn = session !== null;
     }
     
-    // 处理登录 POST
     if (request.method === 'POST') {
         const form = await request.formData();
         const password = form.get('password');
@@ -155,12 +226,10 @@ async function handleAdmin(request, kv) {
         return new Response('密码错误，<a href="/admin">返回</a>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
     
-    // 未登录显示登录页
     if (!isLoggedIn) {
         return new Response(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>管理员登录</title><style>body{font-family:system-ui;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;justify-content:center;align-items:center}.box{background:#fff;padding:40px;border-radius:20px;width:320px;text-align:center}input,button{width:100%;padding:12px;margin:10px 0;border-radius:8px;border:1px solid #ddd}button{background:#667eea;color:#fff;border:none;cursor:pointer}</style></head><body><div class="box"><h2>🔐 管理员登录</h2><form method="post"><input type="password" name="password" placeholder="请输入密码" required><button type="submit">登录</button></form></div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
     
-    // 已登录：加载数据
     let sites = [], posts = [];
     try {
         const sitesData = await kv.get('sites');
@@ -177,298 +246,67 @@ async function handleAdmin(request, kv) {
     
     return new Response(`<!DOCTYPE html>
 <html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理后台</title>
-    <link href="https://unpkg.com/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
-    <script src="https://unpkg.com/quill@1.3.7/dist/quill.js"></script>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:system-ui;background:#f0f2f5;padding:20px}
-        .container{max-width:1400px;margin:0 auto}
-        .header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px 24px;border-radius:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px}
-        .card{background:white;border-radius:14px;padding:24px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.07)}
-        .card-title{font-size:18px;font-weight:700;padding-bottom:14px;margin-bottom:18px;border-bottom:2px solid #f0f2f5}
-        .form-group{margin-bottom:16px}
-        .form-group label{display:block;margin-bottom:6px;font-weight:600;color:#4a5568}
-        .form-group input,.form-group textarea,.form-group select{width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px}
-        .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-        button{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-weight:600}
-        .btn-primary{background:#667eea;color:white}
-        .btn-danger{background:#e53e3e;color:white}
-        .btn-warning{background:#ed8936;color:white}
-        .btn-secondary{background:#a0aec0;color:white}
-        table{width:100%;border-collapse:collapse}
-        th,td{padding:12px;text-align:left;border-bottom:1px solid #e2e8f0}
-        th{background:#f8fafc;font-weight:600}
-        .actions{display:flex;gap:8px}
-        .status-badge{padding:2px 8px;border-radius:20px;font-size:12px}
-        .status-published{background:#d4edda;color:#155724}
-        .status-draft{background:#fff3cd;color:#856404}
-        .pin-badge{background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:12px;font-size:11px;margin-left:6px}
-        .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center}
-        .modal-content{background:white;border-radius:16px;padding:28px;width:90%;max-width:800px;max-height:90vh;overflow-y:auto}
-        .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-        .ql-editor{min-height:300px}
-        .logo-preview{display:flex;align-items:center;gap:14px;margin-bottom:14px}
-        .logo-preview img{max-width:80px;max-height:80px;border-radius:8px;border:1px solid #e2e8f0}
-    </style>
-</head>
-<body>
-<div class="container">
-    <div class="header">
-        <h1>📚 管理后台</h1>
-        <button id="changePwdBtn" class="btn-warning" style="background:#ed8936">🔑 修改密码</button>
-        <a href="/logout" style="background:rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:8px;text-decoration:none">退出登录</a>
-    </div>
-
-    <!-- 文章管理 -->
-    <div class="card">
-        <div class="card-title">📝 文章管理</div>
-        <div style="margin-bottom:16px">
-            <button id="newPostBtn" class="btn-primary">✏️ 写新文章</button>
-        </div>
-        <div style="overflow-x:auto">
-            <table>
-                <thead><tr><th>ID</th><th>标题</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead>
-                <tbody id="postsList"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- 书签管理 -->
-    <div class="card">
-        <div class="card-title">🔖 书签管理</div>
-        <div class="form-row" style="margin-bottom:16px">
-            <input type="text" id="siteName" placeholder="网站名称">
-            <input type="url" id="siteUrl" placeholder="网址">
-            <input type="text" id="siteCat" placeholder="分类">
-            <input type="text" id="siteLogo" placeholder="Logo URL">
-            <textarea id="siteDesc" rows="2" placeholder="描述"></textarea>
-            <button onclick="addSite()" class="btn-primary">添加书签</button>
-        </div>
-        <div style="overflow-x:auto">
-            <table>
-                <thead><tr><th>ID</th><th>名称</th><th>网址</th><th>分类</th><th>操作</th></tr></thead>
-                <tbody id="sitesList"></tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- 站点设置 -->
-    <div class="card">
-        <div class="card-title">⚙️ 站点设置</div>
-        <div class="form-row">
-            <div class="form-group"><label>站点标题</label><input type="text" id="siteTitle" value="${escapeHtml(siteTitle)}"></div>
-            <div class="form-group"><label>站点副标题</label><input type="text" id="siteSubtitle" value="${escapeHtml(siteSubtitle)}"></div>
-        </div>
-        <div class="form-row">
-            <div class="form-group">
-                <label>Logo URL</label>
-                <div style="display:flex;gap:10px"><input type="url" id="logoUrl" value="${escapeHtml(siteLogo)}" style="flex:1"><button id="uploadLogoBtn" class="btn-warning">上传图片</button></div>
-            </div>
-            <div class="form-group"><label>Logo 跳转链接</label><input type="url" id="logoLink" value="${escapeHtml(siteLogoLink)}"></div>
-        </div>
-        <div class="form-group">
-            <label>页眉背景图 URL</label>
-            <div style="display:flex;gap:10px"><input type="url" id="headerBgUrl" value="${escapeHtml(headerBg)}" style="flex:1"><button id="uploadHeaderBgBtn" class="btn-warning">上传图片</button></div>
-        </div>
-        <button id="saveSettingsBtn" class="btn-primary">保存设置</button>
-        <span id="settingsStatus" style="margin-left:12px;font-size:13px"></span>
-    </div>
-</div>
-
-<!-- 文章编辑弹窗 -->
-<div id="postModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header"><h3 id="modalTitle">写新文章</h3><span class="close-post-modal" style="font-size:24px;cursor:pointer">&times;</span></div>
-        <input type="hidden" id="postId">
-        <div class="form-group"><label>标题 *</label><input type="text" id="postTitle" placeholder="文章标题"></div>
-        <div class="form-row">
-            <div class="form-group"><label>分类</label><input type="text" id="postCategory" placeholder="未分类"></div>
-            <div class="form-group"><label>状态</label><select id="postStatus"><option value="published">发布</option><option value="draft">草稿</option></select></div>
-        </div>
-        <div class="form-group"><label>封面图 URL</label><div style="display:flex;gap:10px"><input type="url" id="postCoverImage" style="flex:1"><button id="uploadPostCoverBtn" class="btn-warning">上传图片</button></div></div>
-        <div class="form-group"><label>摘要</label><textarea id="postExcerpt" rows="2" placeholder="可选"></textarea></div>
-        <div class="form-group"><label>内容 *</label><div id="quill-editor"></div><textarea id="postContent" style="display:none"></textarea></div>
-        <div class="form-group"><label>标签</label><input type="text" id="postTags" placeholder="技术,生活"></div>
-        <div class="form-group"><label><input type="checkbox" id="postPinned"> 📌 置顶文章</label></div>
-        <div class="actions" style="justify-content:flex-end;margin-top:20px">
-            <button id="cancelPostBtn" class="btn-secondary">取消</button>
-            <button id="savePostBtn" class="btn-primary">保存</button>
-        </div>
-    </div>
-</div>
-
-<!-- 修改密码弹窗 -->
-<div id="changePwdModal" class="modal">
-    <div class="modal-content" style="max-width:400px">
-        <div class="modal-header"><h3>🔑 修改密码</h3><span class="close-pwd-modal" style="font-size:24px;cursor:pointer">&times;</span></div>
-        <div class="form-group"><label>原密码</label><input type="password" id="oldPassword"></div>
-        <div class="form-group"><label>新密码</label><input type="password" id="newPassword"></div>
-        <div class="form-group"><label>确认新密码</label><input type="password" id="confirmPassword"></div>
-        <div class="actions" style="justify-content:flex-end">
-            <button id="cancelPwdBtn" class="btn-secondary">取消</button>
-            <button id="confirmPwdBtn" class="btn-primary">确认修改</button>
-        </div>
-    </div>
-</div>
-
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>管理后台</title>
+<link href="https://unpkg.com/quill@1.3.7/dist/quill.snow.css" rel="stylesheet">
+<script src="https://unpkg.com/quill@1.3.7/dist/quill.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:system-ui;background:#f0f2f5;padding:20px}
+.container{max-width:1400px;margin:0 auto}
+.header{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px 24px;border-radius:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+.card{background:white;border-radius:14px;padding:24px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.07)}
+.card-title{font-size:18px;font-weight:700;padding-bottom:14px;margin-bottom:18px;border-bottom:2px solid #f0f2f5}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;margin-bottom:6px;font-weight:600;color:#4a5568}
+.form-group input,.form-group textarea,.form-group select{width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+button{padding:10px 20px;border:none;border-radius:8px;cursor:pointer;font-weight:600}
+.btn-primary{background:#667eea;color:white}
+.btn-danger{background:#e53e3e;color:white}
+.btn-warning{background:#ed8936;color:white}
+.btn-secondary{background:#a0aec0;color:white}
+table{width:100%;border-collapse:collapse}
+th,td{padding:12px;text-align:left;border-bottom:1px solid #e2e8f0}
+th{background:#f8fafc;font-weight:600}
+.actions{display:flex;gap:8px}
+.status-badge{padding:2px 8px;border-radius:20px;font-size:12px}
+.status-published{background:#d4edda;color:#155724}
+.status-draft{background:#fff3cd;color:#856404}
+.pin-badge{background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:12px;font-size:11px;margin-left:6px}
+.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center}
+.modal-content{background:white;border-radius:16px;padding:28px;width:90%;max-width:800px;max-height:90vh;overflow-y:auto}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.ql-editor{min-height:300px}
+.logo-preview{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.logo-preview img{max-width:80px;max-height:80px;border-radius:8px;border:1px solid #e2e8f0}
+</style></head>
+<body><div class="container"><div class="header"><h1>📚 管理后台</h1><button id="changePwdBtn" class="btn-warning" style="background:#ed8936">🔑 修改密码</button><a href="/logout" style="background:rgba(255,255,255,0.2);color:white;padding:8px 16px;border-radius:8px;text-decoration:none">退出登录</a></div>
+<div class="card"><div class="card-title">📝 文章管理</div><div style="margin-bottom:16px"><button id="newPostBtn" class="btn-primary">✏️ 写新文章</button></div><div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>标题</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead><tbody id="postsList"></tbody></table></div></div>
+<div class="card"><div class="card-title">🔖 书签管理</div><div class="form-row" style="margin-bottom:16px"><input type="text" id="siteName" placeholder="网站名称"><input type="url" id="siteUrl" placeholder="网址"><input type="text" id="siteCat" placeholder="分类"><input type="text" id="siteLogo" placeholder="Logo URL"><textarea id="siteDesc" rows="2" placeholder="描述"></textarea><button onclick="addSite()" class="btn-primary">添加书签</button></div><div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>名称</th><th>网址</th><th>分类</th><th>操作</th></tr></thead><tbody id="sitesList"></tbody></table></div></div>
+<div class="card"><div class="card-title">⚙️ 站点设置</div><div class="form-row"><div class="form-group"><label>站点标题</label><input type="text" id="siteTitle" value="${escapeHtml(siteTitle)}"></div><div class="form-group"><label>站点副标题</label><input type="text" id="siteSubtitle" value="${escapeHtml(siteSubtitle)}"></div></div><div class="form-row"><div class="form-group"><label>Logo URL</label><div style="display:flex;gap:10px"><input type="url" id="logoUrl" value="${escapeHtml(siteLogo)}" style="flex:1"><button id="uploadLogoBtn" class="btn-warning">上传图片</button></div></div><div class="form-group"><label>Logo 跳转链接</label><input type="url" id="logoLink" value="${escapeHtml(siteLogoLink)}"></div></div><div class="form-group"><label>页眉背景图 URL</label><div style="display:flex;gap:10px"><input type="url" id="headerBgUrl" value="${escapeHtml(headerBg)}" style="flex:1"><button id="uploadHeaderBgBtn" class="btn-warning">上传图片</button></div></div><button id="saveSettingsBtn" class="btn-primary">保存设置</button><span id="settingsStatus" style="margin-left:12px;font-size:13px"></span></div></div>
+<div id="postModal" class="modal"><div class="modal-content"><div class="modal-header"><h3 id="modalTitle">写新文章</h3><span class="close-post-modal" style="font-size:24px;cursor:pointer">&times;</span></div><input type="hidden" id="postId"><div class="form-group"><label>标题 *</label><input type="text" id="postTitle" placeholder="文章标题"></div><div class="form-row"><div class="form-group"><label>分类</label><input type="text" id="postCategory" placeholder="未分类"></div><div class="form-group"><label>状态</label><select id="postStatus"><option value="published">发布</option><option value="draft">草稿</option></select></div></div><div class="form-group"><label>封面图 URL</label><div style="display:flex;gap:10px"><input type="url" id="postCoverImage" style="flex:1"><button id="uploadPostCoverBtn" class="btn-warning">上传图片</button></div></div><div class="form-group"><label>摘要</label><textarea id="postExcerpt" rows="2" placeholder="可选"></textarea></div><div class="form-group"><label>内容 *</label><div id="quill-editor"></div><textarea id="postContent" style="display:none"></textarea></div><div class="form-group"><label>标签</label><input type="text" id="postTags" placeholder="技术,生活"></div><div class="form-group"><label><input type="checkbox" id="postPinned"> 📌 置顶文章</label></div><div class="actions" style="justify-content:flex-end;margin-top:20px"><button id="cancelPostBtn" class="btn-secondary">取消</button><button id="savePostBtn" class="btn-primary">保存</button></div></div></div>
+<div id="changePwdModal" class="modal"><div class="modal-content" style="max-width:400px"><div class="modal-header"><h3>🔑 修改密码</h3><span class="close-pwd-modal" style="font-size:24px;cursor:pointer">&times;</span></div><div class="form-group"><label>原密码</label><input type="password" id="oldPassword"></div><div class="form-group"><label>新密码</label><input type="password" id="newPassword"></div><div class="form-group"><label>确认新密码</label><input type="password" id="confirmPassword"></div><div class="actions" style="justify-content:flex-end"><button id="cancelPwdBtn" class="btn-secondary">取消</button><button id="confirmPwdBtn" class="btn-primary">确认修改</button></div></div></div>
 <script>
 let allPosts = ${JSON.stringify(posts)};
 let allSites = ${JSON.stringify(sites)};
 let quill = null;
-
 function escape(str){if(!str)return '';return String(str).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}
-
-function initQuill(){
-    if(quill)return;
-    quill=new Quill('#quill-editor',{theme:'snow',placeholder:'在这里写下你的文章内容...',modules:{toolbar:[['bold','italic','underline','strike'],[{color:[]},{background:[]}],[{list:'ordered'},{list:'bullet'}],['blockquote','code-block'],['link','image'],[{align:[]}],['clean']]}});
-    quill.on('text-change',()=>{document.getElementById('postContent').value=quill.root.innerHTML;});
-    document.getElementById('uploadPostCoverBtn').onclick=()=>uploadImage('postCoverImage');
-}
-
-function renderPosts(){
-    document.getElementById('postsList').innerHTML=allPosts.map(p=>'<tr><td>'+p.id+'</td><td><strong>'+escape(p.title)+'</strong>'+(p.pinned?'<span class="pin-badge">📌置顶</span>':'')+'</td><td>'+escape(p.category||'未分类')+'</td><td><span class="status-badge '+(p.status==='published'?'status-published':'status-draft')+'">'+(p.status==='published'?'已发布':'草稿')+'</span></td><td>'+new Date(p.createdAt).toLocaleDateString()+'</td><td class="actions"><button class="btn-warning" onclick="editPost('+p.id+')">编辑</button><button class="btn-danger" onclick="deletePost('+p.id+')">删除</button></td></tr>').join('');
-}
-
-function renderSites(){
-    document.getElementById('sitesList').innerHTML=allSites.map(s=>'<tr><td>'+s.id+'</td><td><strong>'+escape(s.name)+'</strong></td><td><a href="'+escape(s.url)+'" target="_blank">'+escape(s.url).substring(0,50)+'</a></td><td>'+escape(s.catelog)+'</td><td class="actions"><button class="btn-danger" onclick="deleteSite('+s.id+')">删除</button></td></tr>').join('');
-}
-
-function openPostModal(id){
-    initQuill();
-    if(id){
-        let p=allPosts.find(p=>p.id==id);
-        if(p){
-            document.getElementById('postId').value=p.id;
-            document.getElementById('postTitle').value=p.title;
-            document.getElementById('postCategory').value=p.category||'';
-            document.getElementById('postCoverImage').value=p.coverImage||'';
-            document.getElementById('postExcerpt').value=p.excerpt||'';
-            document.getElementById('postStatus').value=p.status||'published';
-            document.getElementById('postTags').value=(p.tags||[]).join(',');
-            document.getElementById('postPinned').checked=p.pinned||false;
-            quill.root.innerHTML=p.content||'';
-            document.getElementById('postContent').value=quill.root.innerHTML;
-            document.getElementById('modalTitle').innerText='编辑文章';
-        }
-    }else{
-        document.getElementById('postId').value='';
-        document.getElementById('postTitle').value='';
-        document.getElementById('postCategory').value='';
-        document.getElementById('postCoverImage').value='';
-        document.getElementById('postExcerpt').value='';
-        document.getElementById('postStatus').value='published';
-        document.getElementById('postTags').value='';
-        document.getElementById('postPinned').checked=false;
-        quill.root.innerHTML='';
-        document.getElementById('postContent').value='';
-        document.getElementById('modalTitle').innerText='写新文章';
-    }
-    document.getElementById('postModal').style.display='flex';
-}
-
+function initQuill(){if(quill)return;quill=new Quill('#quill-editor',{theme:'snow',placeholder:'在这里写下你的文章内容...',modules:{toolbar:[['bold','italic','underline','strike'],[{color:[]},{background:[]}],[{list:'ordered'},{list:'bullet'}],['blockquote','code-block'],['link','image'],[{align:[]}],['clean']]}});quill.on('text-change',()=>{document.getElementById('postContent').value=quill.root.innerHTML;});}
+function renderPosts(){document.getElementById('postsList').innerHTML=allPosts.map(p=>'<tr><td>'+p.id+'</span></span></td><td><strong>'+escape(p.title)+'</strong>'+(p.pinned?'<span class="pin-badge">📌置顶</span>':'')+'</span></span></td><td>'+escape(p.category||'未分类')+'</span></span></td><td><span class="status-badge '+(p.status==='published'?'status-published':'status-draft')+'">'+(p.status==='published'?'已发布':'草稿')+'</span></span></span></td><td>'+new Date(p.createdAt).toLocaleDateString()+'</span></span><td><td class="actions"><button class="btn-warning" onclick="editPost('+p.id+')">编辑</button><button class="btn-danger" onclick="deletePost('+p.id+')">删除</button></span></span></tr>').join('');}
+function renderSites(){document.getElementById('sitesList').innerHTML=allSites.map(s=>'<tr><td>'+s.id+'</span></span></td><td><strong>'+escape(s.name)+'</strong></span></span></td><td><a href="'+escape(s.url)+'" target="_blank">'+escape(s.url).substring(0,50)+'</a></span></span></td><td>'+escape(s.catelog)+'</span></span><td><td class="actions"><button class="btn-danger" onclick="deleteSite('+s.id+')">删除</button></span></span></tr>').join('');}
+function openPostModal(id){initQuill();if(id){let p=allPosts.find(p=>p.id==id);if(p){document.getElementById('postId').value=p.id;document.getElementById('postTitle').value=p.title;document.getElementById('postCategory').value=p.category||'';document.getElementById('postCoverImage').value=p.coverImage||'';document.getElementById('postExcerpt').value=p.excerpt||'';document.getElementById('postStatus').value=p.status||'published';document.getElementById('postTags').value=(p.tags||[]).join(',');document.getElementById('postPinned').checked=p.pinned||false;quill.root.innerHTML=p.content||'';document.getElementById('postContent').value=quill.root.innerHTML;document.getElementById('modalTitle').innerText='编辑文章';}}else{document.getElementById('postId').value='';document.getElementById('postTitle').value='';document.getElementById('postCategory').value='';document.getElementById('postCoverImage').value='';document.getElementById('postExcerpt').value='';document.getElementById('postStatus').value='published';document.getElementById('postTags').value='';document.getElementById('postPinned').checked=false;quill.root.innerHTML='';document.getElementById('postContent').value='';document.getElementById('modalTitle').innerText='写新文章';}document.getElementById('postModal').style.display='flex';}
 function closePostModal(){document.getElementById('postModal').style.display='none';}
-
-async function savePost(){
-    if(quill)document.getElementById('postContent').value=quill.root.innerHTML;
-    let id=document.getElementById('postId').value;
-    let data={
-        title:document.getElementById('postTitle').value.trim(),
-        category:document.getElementById('postCategory').value.trim(),
-        coverImage:document.getElementById('postCoverImage').value.trim(),
-        excerpt:document.getElementById('postExcerpt').value.trim(),
-        content:document.getElementById('postContent').value,
-        status:document.getElementById('postStatus').value,
-        tags:document.getElementById('postTags').value.split(',').map(t=>t.trim()).filter(t=>t),
-        pinned:document.getElementById('postPinned').checked
-    };
-    if(!data.title||!data.content||data.content==='<p><br></p>'){alert('请填写标题和内容');return;}
-    let url=id?'/api/blog/'+id:'/api/blog';
-    let method=id?'PUT':'POST';
-    let r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-    let d=await r.json();
-    if(d.code===200||d.code===201){alert(id?'更新成功':'发布成功');closePostModal();location.reload();}
-    else alert('操作失败');
-}
-
+async function savePost(){if(quill)document.getElementById('postContent').value=quill.root.innerHTML;let id=document.getElementById('postId').value;let data={title:document.getElementById('postTitle').value.trim(),category:document.getElementById('postCategory').value.trim(),coverImage:document.getElementById('postCoverImage').value.trim(),excerpt:document.getElementById('postExcerpt').value.trim(),content:document.getElementById('postContent').value,status:document.getElementById('postStatus').value,tags:document.getElementById('postTags').value.split(',').map(t=>t.trim()).filter(t=>t),pinned:document.getElementById('postPinned').checked};if(!data.title||!data.content||data.content==='<p><br></p>'){alert('请填写标题和内容');return;}let url=id?'/api/blog/'+id:'/api/blog';let method=id?'PUT':'POST';let r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});let d=await r.json();if(d.code===200||d.code===201){alert(id?'更新成功':'发布成功');closePostModal();location.reload();}else alert('操作失败');}
 async function editPost(id){openPostModal(id);}
 async function deletePost(id){if(!confirm('确定删除？'))return;await fetch('/api/blog/'+id,{method:'DELETE'});location.reload();}
-
-async function addSite(){
-    let name=document.getElementById('siteName').value.trim();
-    let url=document.getElementById('siteUrl').value.trim();
-    let catelog=document.getElementById('siteCat').value.trim();
-    let logo=document.getElementById('siteLogo').value.trim();
-    let desc=document.getElementById('siteDesc').value.trim();
-    if(!name||!url||!catelog){alert('请填写网站名称、网址和分类');return;}
-    let r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,url,catelog,logo,desc})});
-    if(r.ok)location.reload();else alert('添加失败');
-}
-
+async function addSite(){let name=document.getElementById('siteName').value.trim();let url=document.getElementById('siteUrl').value.trim();let catelog=document.getElementById('siteCat').value.trim();let logo=document.getElementById('siteLogo').value.trim();let desc=document.getElementById('siteDesc').value.trim();if(!name||!url||!catelog){alert('请填写网站名称、网址和分类');return;}let r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,url,catelog,logo,desc})});if(r.ok)location.reload();else alert('添加失败');}
 async function deleteSite(id){if(!confirm('确定删除？'))return;await fetch('/api/config/'+id,{method:'DELETE'});location.reload();}
-
-async function uploadImage(targetId){
-    let input=document.createElement('input');
-    input.type='file';
-    input.accept='image/*';
-    input.onchange=async(e)=>{
-        let file=e.target.files[0];
-        if(!file)return;
-        let fd=new FormData();
-        fd.append('image',file);
-        let r=await fetch('/api/upload',{method:'POST',body:fd});
-        let d=await r.json();
-        if(d.code===200)document.getElementById(targetId).value=d.url;
-        else alert('上传失败');
-    };
-    input.click();
-}
-
-async function saveSettings(){
-    let data={
-        title:document.getElementById('siteTitle').value,
-        subtitle:document.getElementById('siteSubtitle').value,
-        logo:document.getElementById('logoUrl').value,
-        logoLink:document.getElementById('logoLink').value,
-        headerBg:document.getElementById('headerBgUrl').value
-    };
-    let r=await fetch('/api/site-info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-    if(r.ok){document.getElementById('settingsStatus').innerText='保存成功';setTimeout(()=>document.getElementById('settingsStatus').innerText='',3000);}
-    else alert('保存失败');
-}
-
-async function changePassword(){
-    let oldPwd=document.getElementById('oldPassword').value;
-    let newPwd=document.getElementById('newPassword').value;
-    let confirmPwd=document.getElementById('confirmPassword').value;
-    if(newPwd!==confirmPwd){alert('两次输入的新密码不一致');return;}
-    if(newPwd.length<4){alert('新密码长度至少4位');return;}
-    let r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_password:oldPwd,new_password:newPwd})});
-    let d=await r.json();
-    if(d.code===200){alert('密码修改成功，请重新登录');window.location.href='/logout';}
-    else alert(d.message||'修改失败');
-}
-
-document.getElementById('newPostBtn').onclick=()=>openPostModal(null);
-document.getElementById('cancelPostBtn').onclick=closePostModal;
-document.querySelector('.close-post-modal').onclick=closePostModal;
-document.getElementById('savePostBtn').onclick=savePost;
-document.getElementById('saveSettingsBtn').onclick=saveSettings;
-document.getElementById('uploadLogoBtn').onclick=()=>uploadImage('logoUrl');
-document.getElementById('uploadHeaderBgBtn').onclick=()=>uploadImage('headerBgUrl');
-document.getElementById('changePwdBtn').onclick=()=>document.getElementById('changePwdModal').style.display='flex';
-document.querySelector('.close-pwd-modal').onclick=()=>document.getElementById('changePwdModal').style.display='none';
-document.getElementById('cancelPwdBtn').onclick=()=>document.getElementById('changePwdModal').style.display='none';
-document.getElementById('confirmPwdBtn').onclick=changePassword;
-window.onclick=(e)=>{if(e.target===document.getElementById('postModal'))closePostModal();if(e.target===document.getElementById('changePwdModal'))document.getElementById('changePwdModal').style.display='none';};
-
+async function uploadImage(targetId){let input=document.createElement('input');input.type='file';input.accept='image/*';input.onchange=async(e)=>{let file=e.target.files[0];if(!file)return;let fd=new FormData();fd.append('image',file);let r=await fetch('/api/upload',{method:'POST',body:fd});let d=await r.json();if(d.code===200)document.getElementById(targetId).value=d.url;else alert('上传失败：'+d.message);};input.click();}
+async function saveSettings(){let data={title:document.getElementById('siteTitle').value,subtitle:document.getElementById('siteSubtitle').value,logo:document.getElementById('logoUrl').value,logoLink:document.getElementById('logoLink').value,headerBg:document.getElementById('headerBgUrl').value};let r=await fetch('/api/site-info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(r.ok){document.getElementById('settingsStatus').innerText='保存成功';setTimeout(()=>document.getElementById('settingsStatus').innerText='',3000);}else alert('保存失败');}
+async function changePassword(){let oldPwd=document.getElementById('oldPassword').value;let newPwd=document.getElementById('newPassword').value;let confirmPwd=document.getElementById('confirmPassword').value;if(newPwd!==confirmPwd){alert('两次输入的新密码不一致');return;}if(newPwd.length<4){alert('新密码长度至少4位');return;}let r=await fetch('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_password:oldPwd,new_password:newPwd})});let d=await r.json();if(d.code===200){alert('密码修改成功，请重新登录');window.location.href='/logout';}else alert(d.message||'修改失败');}
+document.getElementById('newPostBtn').onclick=()=>openPostModal(null);document.getElementById('cancelPostBtn').onclick=closePostModal;document.querySelector('.close-post-modal').onclick=closePostModal;document.getElementById('savePostBtn').onclick=savePost;document.getElementById('saveSettingsBtn').onclick=saveSettings;document.getElementById('uploadLogoBtn').onclick=()=>uploadImage('logoUrl');document.getElementById('uploadHeaderBgBtn').onclick=()=>uploadImage('headerBgUrl');document.getElementById('uploadPostCoverBtn').onclick=()=>uploadImage('postCoverImage');document.getElementById('changePwdBtn').onclick=()=>document.getElementById('changePwdModal').style.display='flex';document.querySelector('.close-pwd-modal').onclick=()=>document.getElementById('changePwdModal').style.display='none';document.getElementById('cancelPwdBtn').onclick=()=>document.getElementById('changePwdModal').style.display='none';document.getElementById('confirmPwdBtn').onclick=changePassword;window.onclick=(e)=>{if(e.target===document.getElementById('postModal'))closePostModal();if(e.target===document.getElementById('changePwdModal'))document.getElementById('changePwdModal').style.display='none';};
 renderPosts();renderSites();
-</script>
-</body>
-</html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+</script></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
 // ==================== API 处理 ====================
@@ -476,7 +314,6 @@ async function handleApi(request, kv) {
     const url = new URL(request.url);
     const path = url.pathname;
     
-    // 书签相关
     if (request.method === 'GET' && path === '/api/config') {
         let sites = [];
         try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { }
@@ -498,8 +335,6 @@ async function handleApi(request, kv) {
         await kv.put('sites', JSON.stringify(sites.filter(s => s.id !== id)));
         return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 文章相关
     if (request.method === 'GET' && path === '/api/blog') {
         let posts = [];
         try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
@@ -513,12 +348,7 @@ async function handleApi(request, kv) {
         let slug = baseSlug;
         let suffix = 1;
         while (posts.some(p => p.slug === slug)) { slug = baseSlug + '-' + (suffix++); }
-        const newPost = {
-            id: Date.now(), slug: slug, title: body.title, content: body.content,
-            category: body.category || '未分类', coverImage: body.coverImage || '', excerpt: body.excerpt || '',
-            status: body.status || 'published', tags: body.tags || [], pinned: body.pinned || false,
-            createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
-        };
+        const newPost = { id: Date.now(), slug: slug, title: body.title, content: body.content, category: body.category || '未分类', coverImage: body.coverImage || '', excerpt: body.excerpt || '', status: body.status || 'published', tags: body.tags || [], pinned: body.pinned || false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
         posts.push(newPost);
         await kv.put('blog_posts', JSON.stringify(posts));
         return new Response(JSON.stringify({ code: 201 }), { headers: { 'Content-Type': 'application/json' } });
@@ -542,8 +372,6 @@ async function handleApi(request, kv) {
         await kv.put('blog_posts', JSON.stringify(posts.filter(p => p.id !== id)));
         return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 站点设置
     if (request.method === 'GET' && path === '/api/site-info') {
         const title = await kv.get('site_title') || '';
         const subtitle = await kv.get('site_subtitle') || '';
@@ -561,8 +389,6 @@ async function handleApi(request, kv) {
         if (body.headerBg !== undefined) await kv.put('header_bg', body.headerBg);
         return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
-    // 修改密码
     if (request.method === 'POST' && path === '/api/change-password') {
         const body = await request.json();
         const adminPass = await kv.get('admin_password') || 'admin123';
@@ -575,59 +401,7 @@ async function handleApi(request, kv) {
         await kv.put('admin_password', body.new_password);
         return new Response(JSON.stringify({ code: 200, message: '修改成功' }), { headers: { 'Content-Type': 'application/json' } });
     }
-    
     return new Response(JSON.stringify({ code: 404 }), { status: 404 });
-}
-
-// ==================== 图片上传 ====================
-async function handleUpload(request, kv) {
-    const cookie = request.headers.get('Cookie') || '';
-    const match = cookie.match(/admin_token=([^;]+)/);
-    let isLoggedIn = false;
-    if (match) {
-        const session = await kv.get(`session:${match[1]}`);
-        isLoggedIn = session !== null;
-    }
-    if (!isLoggedIn) return new Response(JSON.stringify({ code: 401 }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-    
-    if (request.method !== 'POST') return new Response(JSON.stringify({ code: 405 }), { status: 405 });
-    
-    try {
-        const formData = await request.formData();
-        const file = formData.get('image');
-        if (!file || !file.type.startsWith('image/')) {
-            return new Response(JSON.stringify({ code: 400, message: '请选择图片' }), { headers: { 'Content-Type': 'application/json' } });
-        }
-        if (file.size > 5 * 1024 * 1024) {
-            return new Response(JSON.stringify({ code: 400, message: '图片不能超过5MB' }), { headers: { 'Content-Type': 'application/json' } });
-        }
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        let binary = '';
-        const CHUNK = 8192;
-        for (let i = 0; i < bytes.length; i += CHUNK) {
-            binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-        }
-        const base64 = btoa(binary);
-        const ext = file.type.split('/')[1] || 'jpg';
-        const filename = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}.${ext}`;
-        await kv.put(`img:${filename}`, `data:${file.type};base64,${base64}`, { expirationTtl: 86400 * 30 });
-        return new Response(JSON.stringify({ code: 200, url: `/api/image/${filename}` }), { headers: { 'Content-Type': 'application/json' } });
-    } catch(e) {
-        return new Response(JSON.stringify({ code: 500, message: e.message }), { headers: { 'Content-Type': 'application/json' } });
-    }
-}
-
-async function handleImage(request, env, params) {
-    const url = new URL(request.url);
-    const filename = url.pathname.split('/').pop();
-    if (!filename) return new Response('Not found', { status: 404 });
-    const data = await env.NAV_KV.get(`img:${filename}`);
-    if (!data) return new Response('Not found', { status: 404 });
-    const match = data.match(/^data:(image\/\w+);base64,(.+)$/);
-    if (!match) return new Response('Invalid', { status: 500 });
-    return new Response(Uint8Array.from(atob(match[2]), c => c.charCodeAt(0)), {
-        headers: { 'Content-Type': match[1], 'Cache-Control': 'public,max-age=86400' }
-    });
 }
 
 async function handleLogout(request, kv) {
