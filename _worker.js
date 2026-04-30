@@ -1,4 +1,4 @@
-// 旭儿导航 - 稳定完整版 #4
+// 旭儿导航 - 稳定完整版 #5 (添加文章封面图功能)
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -20,7 +20,7 @@ async function handleHome(request, kv) {
         if (sitesData) sites = JSON.parse(sitesData);
         const postsData = await kv.get('blog_posts');
         if (postsData) posts = JSON.parse(postsData);
-    } catch(e) { /* ignore */ }
+    } catch(e) { }
 
     const publishedPosts = posts.filter(p => p.status === 'published').slice(0, 5);
     
@@ -28,10 +28,10 @@ async function handleHome(request, kv) {
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>旭儿导航</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:1200px;margin:0 auto}.header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:40px;border-radius:20px;margin-bottom:30px;text-align:center}.header h1{font-size:36px;margin-bottom:10px}.section{background:#fff;border-radius:16px;padding:24px;margin-bottom:24px;box-shadow:0 2px 8px rgba(0,0,0,.08)}.section h2{margin-bottom:20px;font-size:20px;border-left:4px solid #667eea;padding-left:12px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}.card{background:#f8f9fa;border-radius:12px;padding:16px;transition:transform .2s}.card:hover{transform:translateY(-2px)}.card a{text-decoration:none;color:#333;display:block}.card h3{font-size:16px;margin-bottom:6px;color:#667eea}.card p{font-size:13px;color:#888}.post-item{border-bottom:1px solid #eee;padding:12px 0}.post-item:last-child{border-bottom:none}.post-title{font-size:16px;font-weight:600;color:#333;text-decoration:none}.post-title:hover{color:#667eea}.post-meta{font-size:12px;color:#888;margin-top:6px}.admin-btn{display:inline-block;margin-top:20px;background:#667eea;color:#fff;padding:10px 24px;border-radius:30px;text-decoration:none}.empty{text-align:center;padding:40px;color:#888}
+*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:1200px;margin:0 auto}.header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:40px;border-radius:20px;margin-bottom:30px;text-align:center}.header h1{font-size:36px;margin-bottom:10px}.section{background:#fff;border-radius:16px;padding:24px;margin-bottom:24px;box-shadow:0 2px 8px rgba(0,0,0,.08)}.section h2{margin-bottom:20px;font-size:20px;border-left:4px solid #667eea;padding-left:12px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}.card{background:#f8f9fa;border-radius:12px;padding:16px;transition:transform .2s}.card:hover{transform:translateY(-2px)}.card a{text-decoration:none;color:#333;display:block}.card h3{font-size:16px;margin-bottom:6px;color:#667eea}.card p{font-size:13px;color:#888}.post-item{border-bottom:1px solid #eee;padding:12px 0;display:flex;gap:16px}.post-item:last-child{border-bottom:none}.post-cover{width:80px;height:60px;object-fit:cover;border-radius:8px;background:#f0f0f0}.post-info{flex:1}.post-title{font-size:16px;font-weight:600;color:#333;text-decoration:none}.post-title:hover{color:#667eea}.post-meta{font-size:12px;color:#888;margin-top:6px}.admin-btn{display:inline-block;margin-top:20px;background:#667eea;color:#fff;padding:10px 24px;border-radius:30px;text-decoration:none}.empty{text-align:center;padding:40px;color:#888}
 </style></head>
 <body><div class="container"><div class="header"><h1>📚 旭儿导航</h1><p>精选网站 · 优质博客</p></div>
-<div class="section"><h2>📖 最新文章</h2>${publishedPosts.length === 0 ? '<div class="empty">暂无文章</div>' : publishedPosts.map(p => `<div class="post-item"><a href="/post/${p.id}" class="post-title">${escapeHtml(p.title)}</a><div class="post-meta">📅 ${new Date(p.createdAt).toLocaleDateString()} | 🏷️ ${escapeHtml(p.category || '未分类')}</div></div>`).join('')}</div>
+<div class="section"><h2>📖 最新文章</h2>${publishedPosts.length === 0 ? '<div class="empty">暂无文章</div>' : publishedPosts.map(p => `<div class="post-item">${p.coverImage ? `<img src="${escapeHtml(p.coverImage)}" class="post-cover">` : '<div class="post-cover" style="background:#e2e8f0;display:flex;align-items:center;justify-content:center;font-size:24px">📄</div>'}<div class="post-info"><a href="/post/${p.id}" class="post-title">${escapeHtml(p.title)}</a><div class="post-meta">📅 ${new Date(p.createdAt).toLocaleDateString()} | 🏷️ ${escapeHtml(p.category || '未分类')}</div></div></div>`).join('')}</div>
 <div class="section"><h2>🔖 常用网站</h2><div class="grid">${sites.map(s => `<div class="card"><a href="${s.url}" target="_blank"><h3>${escapeHtml(s.name)}</h3><p>${escapeHtml(s.catelog)}</p></a></div>`).join('')}${sites.length === 0 ? '<div class="empty">暂无书签，请前往后台添加</div>' : ''}</div></div>
 <div style="text-align:center"><a href="/admin" class="admin-btn">⚙️ 后台管理</a></div></div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
@@ -64,28 +64,28 @@ async function handleAdmin(request, kv) {
         if (sitesData) sites = JSON.parse(sitesData);
         const postsData = await kv.get('blog_posts');
         if (postsData) posts = JSON.parse(postsData);
-    } catch(e) { /* ignore */ }
+    } catch(e) { }
     return new Response(`<!DOCTYPE html>
 <html lang="zh-CN">
 <head><meta charset="UTF-8"><title>管理后台</title><style>
 body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:1200px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}.card{background:#fff;border-radius:16px;padding:24px;margin-bottom:24px}.card h3{margin-bottom:16px}.form-group{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.form-group input,.form-group textarea,.form-group select{flex:1;padding:10px;border:1px solid #ddd;border-radius:8px}.form-group textarea{min-width:100%}button{padding:10px 20px;background:#667eea;color:#fff;border:none;border-radius:8px;cursor:pointer}.delete-btn{background:#e53e3e}table{width:100%;border-collapse:collapse}th,td{padding:12px;text-align:left;border-bottom:1px solid #eee}th{background:#f8f9fa}.status-badge{padding:2px 8px;border-radius:12px;font-size:12px}.status-published{background:#d4edda;color:#155724}.status-draft{background:#fff3cd;color:#856404}.modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);justify-content:center;align-items:center;z-index:1000}.modal-content{background:#fff;border-radius:16px;padding:24px;width:90%;max-width:600px}
 </style></head>
 <body><div class="container"><div class="header"><h1>📚 管理后台</h1><a href="/logout" style="color:#e53e3e">退出登录</a></div>
-<div class="card"><h3>📝 发布文章</h3><div class="form-group"><input type="text" id="postTitle" placeholder="文章标题"></div><div class="form-group"><input type="text" id="postCategory" placeholder="分类"><select id="postStatus"><option value="published">发布</option><option value="draft">草稿</option></select></div><div class="form-group"><textarea id="postContent" rows="6" placeholder="文章内容..."></textarea></div><button onclick="addPost()">发布文章</button></div>
-<div class="card"><h3>📖 文章列表</h3><div class="form-group"><input type="text" id="searchPost" placeholder="搜索文章..." onkeyup="searchPosts()"></div><table><thead><tr><th>标题</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead><tbody id="postList"></tbody></table></div>
+<div class="card"><h3>📝 发布文章</h3><div class="form-group"><input type="text" id="postTitle" placeholder="文章标题"></div><div class="form-group"><input type="text" id="postCategory" placeholder="分类"><input type="url" id="postCoverImage" placeholder="封面图 URL（可选）"><select id="postStatus"><option value="published">发布</option><option value="draft">草稿</option></select></div><div class="form-group"><textarea id="postContent" rows="6" placeholder="文章内容..."></textarea></div><button onclick="addPost()">发布文章</button></div>
+<div class="card"><h3>📖 文章列表</h3><div class="form-group"><input type="text" id="searchPost" placeholder="搜索文章..." onkeyup="searchPosts()"></div><table><thead><tr><th>封面</th><th>标题</th><th>分类</th><th>状态</th><th>日期</th><th>操作</th></tr></thead><tbody id="postList"></tbody></table></div>
 <div class="card"><h3>➕ 添加书签</h3><div class="form-group"><input type="text" id="siteName" placeholder="网站名称"><input type="url" id="siteUrl" placeholder="网址"><input type="text" id="siteCat" placeholder="分类"><button onclick="addBookmark()">添加</button></div></div>
 <div class="card"><h3>🔖 书签列表</h3><table><thead><tr><th>名称</th><th>网址</th><th>分类</th><th>操作</th></tr></thead><tbody id="bookmarkList"></tbody></table></div></div>
-<div id="editModal" class="modal"><div class="modal-content"><div style="display:flex;justify-content:space-between;margin-bottom:20px"><h3>编辑文章</h3><span onclick="closeEditModal()" style="font-size:24px;cursor:pointer">&times;</span></div><input type="hidden" id="editId"><div class="form-group"><label>标题</label><input type="text" id="editTitle" style="width:100%"></div><div class="form-group"><label>分类</label><input type="text" id="editCategory" style="width:100%"></div><div class="form-group"><label>状态</label><select id="editStatus" style="width:100%"><option value="published">发布</option><option value="draft">草稿</option></select></div><div class="form-group"><label>内容</label><textarea id="editContent" rows="8" style="width:100%"></textarea></div><button onclick="saveEdit()">保存修改</button></div></div>
+<div id="editModal" class="modal"><div class="modal-content"><div style="display:flex;justify-content:space-between;margin-bottom:20px"><h3>编辑文章</h3><span onclick="closeEditModal()" style="font-size:24px;cursor:pointer">&times;</span></div><input type="hidden" id="editId"><div class="form-group"><label>标题</label><input type="text" id="editTitle" style="width:100%"></div><div class="form-group"><label>分类</label><input type="text" id="editCategory" style="width:100%"></div><div class="form-group"><label>封面图 URL</label><input type="url" id="editCoverImage" style="width:100%"></div><div class="form-group"><label>状态</label><select id="editStatus" style="width:100%"><option value="published">发布</option><option value="draft">草稿</option></select></div><div class="form-group"><label>内容</label><textarea id="editContent" rows="8" style="width:100%"></textarea></div><button onclick="saveEdit()">保存修改</button></div></div>
 <script>
 let allPosts = ${JSON.stringify(posts)};
 let allSites = ${JSON.stringify(sites)};
 function escape(str){return String(str).replace(/[&<>]/g,function(m){if(m==='&')return'&amp;';if(m==='<')return'&lt;';if(m==='>')return'&gt;';return m;});}
-function renderPosts(filter=''){let f=filter?allPosts.filter(p=>p.title.toLowerCase().includes(filter.toLowerCase())):allPosts;document.getElementById('postList').innerHTML=f.map(p=>'<tr><td><strong>'+escape(p.title)+'</strong></td><td>'+escape(p.category||'未分类')+'</td><td><span class="status-badge '+(p.status==='published'?'status-published':'status-draft')+'">'+(p.status==='published'?'已发布':'草稿')+'</span></td><td>'+(p.createdAt?new Date(p.createdAt).toLocaleDateString():'-')+'</td><td><button onclick="openEditModal('+p.id+')" style="background:#ed8936;">编辑</button> <button class="delete-btn" onclick="deletePost('+p.id+')">删除</button></td></tr>').join('');}
+function renderPosts(filter=''){let f=filter?allPosts.filter(p=>p.title.toLowerCase().includes(filter.toLowerCase())):allPosts;document.getElementById('postList').innerHTML=f.map(p=>'<tr><td><img src="'+(p.coverImage||'')+'" style="width:50px;height:40px;object-fit:cover;border-radius:6px" onerror="this.src=\'data:image/svg+xml,%3Csvg xmlns=\\\'http://www.w3.org/2000/svg\\\' width=\\\'50\\\' height=\\\'40\\\' viewBox=\\\'0 0 50 40\\\'%3E%3Crect width=\\\'50\\\' height=\\\'40\\\' fill=\\\'%23e2e8f0\\\'/%3E%3Ctext x=\\\'25\\\' y=\\\'20\\\' text-anchor=\\\'middle\\\' dominant-baseline=\\\'middle\\\' fill=\\\'%23999\\\' font-size=\\\'12\\\'%3E无图%3C/text%3E%3C/svg%3E\'">'+'</td><td><strong>'+escape(p.title)+'</strong></td><td>'+escape(p.category||'未分类')+'</td><td><span class="status-badge '+(p.status==='published'?'status-published':'status-draft')+'">'+(p.status==='published'?'已发布':'草稿')+'</span></td><td>'+(p.createdAt?new Date(p.createdAt).toLocaleDateString():'-')+'</td><td><button onclick="openEditModal('+p.id+')" style="background:#ed8936;">编辑</button> <button class="delete-btn" onclick="deletePost('+p.id+')">删除</button></td></tr>').join('');}
 function searchPosts(){renderPosts(document.getElementById('searchPost').value);}
-function openEditModal(id){let p=allPosts.find(p=>p.id===id);if(!p)return;document.getElementById('editId').value=p.id;document.getElementById('editTitle').value=p.title;document.getElementById('editCategory').value=p.category||'';document.getElementById('editStatus').value=p.status||'published';document.getElementById('editContent').value=p.content||'';document.getElementById('editModal').style.display='flex';}
+function openEditModal(id){let p=allPosts.find(p=>p.id===id);if(!p)return;document.getElementById('editId').value=p.id;document.getElementById('editTitle').value=p.title;document.getElementById('editCategory').value=p.category||'';document.getElementById('editCoverImage').value=p.coverImage||'';document.getElementById('editStatus').value=p.status||'published';document.getElementById('editContent').value=p.content||'';document.getElementById('editModal').style.display='flex';}
 function closeEditModal(){document.getElementById('editModal').style.display='none';}
-async function saveEdit(){let id=parseInt(document.getElementById('editId').value);let title=document.getElementById('editTitle').value.trim();let category=document.getElementById('editCategory').value.trim();let status=document.getElementById('editStatus').value;let content=document.getElementById('editContent').value;if(!title||!content){alert('请填写标题和内容');return;}let res=await fetch('/api/blog/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,category,status,content})});if(res.ok)location.reload();else alert('保存失败');}
-async function addPost(){let title=document.getElementById('postTitle').value.trim();let content=document.getElementById('postContent').value.trim();let category=document.getElementById('postCategory').value.trim();let status=document.getElementById('postStatus').value;if(!title||!content){alert('请填写标题和内容');return;}let res=await fetch('/api/blog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,content,category,status})});if(res.ok)location.reload();else alert('发布失败');}
+async function saveEdit(){let id=parseInt(document.getElementById('editId').value);let title=document.getElementById('editTitle').value.trim();let category=document.getElementById('editCategory').value.trim();let coverImage=document.getElementById('editCoverImage').value.trim();let status=document.getElementById('editStatus').value;let content=document.getElementById('editContent').value;if(!title||!content){alert('请填写标题和内容');return;}let res=await fetch('/api/blog/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,category,coverImage,status,content})});if(res.ok)location.reload();else alert('保存失败');}
+async function addPost(){let title=document.getElementById('postTitle').value.trim();let content=document.getElementById('postContent').value.trim();let category=document.getElementById('postCategory').value.trim();let coverImage=document.getElementById('postCoverImage').value.trim();let status=document.getElementById('postStatus').value;if(!title||!content){alert('请填写标题和内容');return;}let res=await fetch('/api/blog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,content,category,coverImage,status})});if(res.ok)location.reload();else alert('发布失败');}
 async function deletePost(id){if(!confirm('确定删除？'))return;let res=await fetch('/api/blog/'+id,{method:'DELETE'});if(res.ok)location.reload();else alert('删除失败');}
 function renderBookmarks(){document.getElementById('bookmarkList').innerHTML=allSites.map(s=>'<tr><td><strong>'+escape(s.name)+'</strong></td><td><a href="'+escape(s.url)+'" target="_blank">'+escape(s.url)+'</a></td><td>'+escape(s.catelog)+'</td><td><button class="delete-btn" onclick="deleteBookmark('+s.id+')">删除</button></td></tr>').join('');}
 async function addBookmark(){let name=document.getElementById('siteName').value.trim();let url=document.getElementById('siteUrl').value.trim();let catelog=document.getElementById('siteCat').value.trim();if(!name||!url||!catelog){alert('请填写完整');return;}let res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,url,catelog})});if(res.ok)location.reload();else alert('添加失败');}
@@ -99,13 +99,13 @@ async function handleApi(request, kv) {
     const path = url.pathname;
     if (request.method === 'GET' && path === '/api/config') {
         let sites = [];
-        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { /* ignore */ }
+        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { }
         return new Response(JSON.stringify({ code: 200, data: sites }), { headers: { 'Content-Type': 'application/json' } });
     }
     if (request.method === 'POST' && path === '/api/config') {
         const body = await request.json();
         let sites = [];
-        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { /* ignore */ }
+        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { }
         const newId = sites.length ? Math.max(...sites.map(s => s.id)) + 1 : 1;
         sites.push({ id: newId, name: body.name, url: body.url, catelog: body.catelog });
         await kv.put('sites', JSON.stringify(sites));
@@ -114,20 +114,20 @@ async function handleApi(request, kv) {
     if (request.method === 'DELETE' && path.startsWith('/api/config/')) {
         const id = parseInt(path.split('/')[3]);
         let sites = [];
-        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { /* ignore */ }
+        try { const data = await kv.get('sites'); if (data) sites = JSON.parse(data); } catch(e) { }
         await kv.put('sites', JSON.stringify(sites.filter(s => s.id !== id)));
         return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
     }
     if (request.method === 'GET' && path === '/api/blog') {
         let posts = [];
-        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { /* ignore */ }
+        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
         return new Response(JSON.stringify({ code: 200, data: posts }), { headers: { 'Content-Type': 'application/json' } });
     }
     if (request.method === 'POST' && path === '/api/blog') {
         const body = await request.json();
         let posts = [];
-        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { /* ignore */ }
-        const newPost = { id: Date.now(), title: body.title, content: body.content, category: body.category || '未分类', status: body.status || 'published', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
+        const newPost = { id: Date.now(), title: body.title, content: body.content, category: body.category || '未分类', coverImage: body.coverImage || '', status: body.status || 'published', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
         posts.push(newPost);
         await kv.put('blog_posts', JSON.stringify(posts));
         return new Response(JSON.stringify({ code: 201 }), { headers: { 'Content-Type': 'application/json' } });
@@ -136,10 +136,10 @@ async function handleApi(request, kv) {
         const id = parseInt(path.split('/')[3]);
         const body = await request.json();
         let posts = [];
-        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { /* ignore */ }
+        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
         const index = posts.findIndex(p => p.id === id);
         if (index !== -1) {
-            posts[index] = { ...posts[index], title: body.title, content: body.content, category: body.category, status: body.status, updatedAt: new Date().toISOString() };
+            posts[index] = { ...posts[index], title: body.title, content: body.content, category: body.category, coverImage: body.coverImage, status: body.status, updatedAt: new Date().toISOString() };
             await kv.put('blog_posts', JSON.stringify(posts));
         }
         return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
@@ -147,7 +147,7 @@ async function handleApi(request, kv) {
     if (request.method === 'DELETE' && path.startsWith('/api/blog/')) {
         const id = parseInt(path.split('/')[3]);
         let posts = [];
-        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { /* ignore */ }
+        try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
         await kv.put('blog_posts', JSON.stringify(posts.filter(p => p.id !== id)));
         return new Response(JSON.stringify({ code: 200 }), { headers: { 'Content-Type': 'application/json' } });
     }
@@ -166,7 +166,7 @@ async function handlePost(request, kv) {
     const id = parseInt(url.pathname.split('/')[2]);
     if (isNaN(id)) return new Response('文章不存在', { status: 404 });
     let posts = [];
-    try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { /* ignore */ }
+    try { const data = await kv.get('blog_posts'); if (data) posts = JSON.parse(data); } catch(e) { }
     const post = posts.find(p => p.id === id);
     if (!post || post.status !== 'published') return new Response('文章不存在', { status: 404 });
     let views = 0;
@@ -175,8 +175,8 @@ async function handlePost(request, kv) {
         if (viewsData) views = parseInt(viewsData);
         views++;
         await kv.put(`views:${id}`, views.toString());
-    } catch(e) { /* ignore */ }
-    return new Response(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHtml(post.title)} - 旭儿导航</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:800px;margin:0 auto}.article{background:#fff;border-radius:20px;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,.08)}h1{font-size:28px;margin-bottom:16px;color:#333}.meta{color:#888;font-size:14px;margin-bottom:30px;padding-bottom:16px;border-bottom:1px solid #eee}.content{line-height:1.8;font-size:16px;color:#444}.back-btn{display:inline-block;margin-top:30px;background:#667eea;color:#fff;padding:10px 24px;border-radius:30px;text-decoration:none}</style></head><body><div class="container"><div class="article"><h1>${escapeHtml(post.title)}</h1><div class="meta">分类：${escapeHtml(post.category || '未分类')} | 发布时间：${new Date(post.createdAt).toLocaleDateString()} | 阅读：${views}次</div><div class="content">${post.content.replace(/\n/g, '<br>')}</div><a href="/" class="back-btn">← 返回首页</a></div></div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    } catch(e) { }
+    return new Response(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escapeHtml(post.title)} - 旭儿导航</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui;background:#f5f7fa;padding:20px}.container{max-width:900px;margin:0 auto}.article{background:#fff;border-radius:20px;padding:40px;box-shadow:0 2px 8px rgba(0,0,0,.08)}.cover-img{width:100%;max-height:300px;object-fit:cover;border-radius:12px;margin-bottom:24px}h1{font-size:28px;margin-bottom:16px;color:#333}.meta{color:#888;font-size:14px;margin-bottom:30px;padding-bottom:16px;border-bottom:1px solid #eee}.content{line-height:1.8;font-size:16px;color:#444}.back-btn{display:inline-block;margin-top:30px;background:#667eea;color:#fff;padding:10px 24px;border-radius:30px;text-decoration:none}</style></head><body><div class="container"><div class="article">${post.coverImage ? `<img src="${escapeHtml(post.coverImage)}" class="cover-img" onerror="this.style.display='none'">` : ''}<h1>${escapeHtml(post.title)}</h1><div class="meta">分类：${escapeHtml(post.category || '未分类')} | 发布时间：${new Date(post.createdAt).toLocaleDateString()} | 阅读：${views}次</div><div class="content">${post.content.replace(/\n/g, '<br>')}</div><a href="/" class="back-btn">← 返回首页</a></div></div></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
 function escapeHtml(str) {
