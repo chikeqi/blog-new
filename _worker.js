@@ -1,4 +1,4 @@
-// Cloudflare Pages Worker - 旭儿综合网站
+// Cloudflare Pages Worker - 旭儿综合网站    KV空间名称：NAV_KV	默认密码：admin123
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
